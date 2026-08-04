@@ -1,0 +1,5 @@
+gpcm.db
+*.log
+testdata/
+/data/
+/mkw-dwc
