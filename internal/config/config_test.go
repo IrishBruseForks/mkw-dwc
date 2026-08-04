@@ -11,7 +11,7 @@ import (
 
 func TestStoreRequired(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "missing-store.cfg")
+	path := filepath.Join(dir, "missing-store.ini")
 	if err := os.WriteFile(path, []byte("[NasServer]\nIP = 0.0.0.0\nPort = 9000\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -26,7 +26,7 @@ func TestStoreRequired(t *testing.T) {
 
 func TestStoreTypeMissing(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "missing-type.cfg")
+	path := filepath.Join(dir, "missing-type.ini")
 	content := "[Store]\nPath = \"data\"\n"
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
@@ -43,7 +43,7 @@ func TestStoreTypeMissing(t *testing.T) {
 
 func TestStoreParsesQuotedInlineComments(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "store.cfg")
+	path := filepath.Join(dir, "store.ini")
 	content := `[Store]
 Type = "json" # "json"
 Path = "data" # JSON data directory
@@ -66,7 +66,7 @@ Path = "data" # JSON data directory
 
 func TestStoreInvalidType(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "bad-type.cfg")
+	path := filepath.Join(dir, "bad-type.ini")
 	content := `[Store]
 Type = "redis"
 Path = "data"
@@ -86,7 +86,7 @@ Path = "data"
 
 func TestLoggingDefaults(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "no-logging.cfg")
+	path := filepath.Join(dir, "no-logging.ini")
 	content := `[Store]
 Type = "json"
 Path = "data"
@@ -112,7 +112,7 @@ Path = "data"
 
 func TestLoggingInvalidLevel(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "bad-level.cfg")
+	path := filepath.Join(dir, "bad-level.ini")
 	content := `[Store]
 Type = "json"
 Path = "data"
@@ -135,7 +135,7 @@ Level = verbose
 
 func TestLoggingParsesSection(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "logging.cfg")
+	path := filepath.Join(dir, "logging.ini")
 	content := `[Store]
 Type = "json"
 Path = "data"

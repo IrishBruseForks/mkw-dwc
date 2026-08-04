@@ -5,7 +5,7 @@ Survives restarts. Room lists do **not** live here (those are the in-memory
 [backend](backend.md)).
 
 Package: `internal/database` (interface), `internal/database/json`  
-Configured in `mkw-dwc.cfg` under `[Store]` (required, no CLI default):
+Configured in `mkw-dwc.ini` under `[Store]` (required, no CLI default):
 
 ```ini
 [Store]

@@ -139,7 +139,7 @@ only need to run a server.
 ### Entry point: `main.go`
 
 1. Parses CLI flags (`--config`, `--proxy-bind`)
-2. Loads `mkw-dwc.cfg` (including required `[Store]`)
+2. Loads `mkw-dwc.ini` (including required `[Store]`)
 3. Initializes logging from optional `[Logging]` via `internal/logging`
 4. Opens the account store from `[Store]` Type/Path
 5. Creates the shared `backend.Backend`
@@ -151,7 +151,7 @@ forward join messages to hosts over UDP.
 
 ### `internal/config`
 
-Loads `mkw-dwc.cfg`, an INI file with one section per service:
+Loads `mkw-dwc.ini`, an INI file with one section per service:
 
 | Section | Default port | Protocol |
 |---------|-------------|----------|
@@ -202,11 +202,11 @@ internal/nas/       Nintendo NAS HTTP server
 internal/gamespy/   GameSpy QR, browser, profile, NATNEG
 internal/proxy/     Optional NAS reverse proxy
 internal/database/  Account store interface + JSON implementation
-internal/config/    mkw-dwc.cfg loader
+internal/config/    mkw-dwc.ini loader
 internal/logging/   Colored leveled logging
 internal/backend/   In-memory rooms and NATNEG registry
 tests/              Integration tests (reference parity)
-mkw-dwc.cfg         Default configuration
+mkw-dwc.ini         Default configuration
 docs/               Setup and architecture docs
 ```
 

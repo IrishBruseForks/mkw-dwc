@@ -49,7 +49,7 @@ Responses are Nintendo-style query strings with base64-ish encoding (`=` becomes
 ## Shared state
 
 - Writes **`nas_logins`** and reads **`banned`** in the [account store](database.md)
-- `SvcHost` comes from `mkw-dwc.cfg` (`NasServer.SvcHost`, default `dls1.nintendowifi.net`)
+- `SvcHost` comes from `mkw-dwc.ini` (`NasServer.SvcHost`, default `dls1.nintendowifi.net`)
 
 ## Hostnames
 

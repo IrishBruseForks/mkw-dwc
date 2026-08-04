@@ -1,4 +1,4 @@
-// Package config loads mkw-dwc.cfg INI sections for the MKWii network server.
+// Package config loads mkw-dwc.ini INI sections for the MKWii network server.
 package config
 
 import (
@@ -11,7 +11,7 @@ import (
 	"github.com/IrishBruse/mkw-dwc/internal/logging"
 )
 
-// Config holds parsed INI section key/value pairs from mkw-dwc.cfg.
+// Config holds parsed INI section key/value pairs from mkw-dwc.ini.
 type Config struct {
 	path     string
 	sections map[string]map[string]string
@@ -23,7 +23,7 @@ type StoreSettings struct {
 	Path string
 }
 
-// Load reads an mkw-dwc.cfg file.
+// Load reads an mkw-dwc.ini file.
 func Load(path string) (*Config, error) {
 	sections, err := parseINI(path)
 	if err != nil {

@@ -16,7 +16,7 @@ No Python service farm, no external database, no cluster to babysit.
 | GameSpy login | Profile server (GPCM) |
 | Room advertise / search | QR (UDP) + server browser (TCP) |
 | NAT punch-through | NAT negotiation (UDP) |
-| Player data | JSON account store via `[Store]` in `mkw-dwc.cfg` |
+| Player data | JSON account store via `[Store]` in `mkw-dwc.ini` |
 
 Not included: storage, admin UI, game stats, or DLS.
 
@@ -35,7 +35,7 @@ cd mkw-dwc
 go build -o mkw-dwc .
 ```
 
-Set `[Store]` in `mkw-dwc.cfg` before running:
+Set `[Store]` in `mkw-dwc.ini` before running:
 
 ```ini
 [Store]
@@ -44,7 +44,7 @@ Path = "data"
 ```
 
 ```shell
-sudo ./mkw-dwc --config mkw-dwc.cfg --proxy-bind :80
+sudo ./mkw-dwc --config mkw-dwc.ini --proxy-bind :80
 ```
 
 Health checks:
@@ -62,7 +62,7 @@ go test ./tests/...
 
 | Flag | Default | Meaning |
 |------|---------|---------|
-| `--config` | `mkw-dwc.cfg` | Path to server INI |
+| `--config` | `mkw-dwc.ini` | Path to server INI |
 | `--proxy-bind` | empty (off) | NAS proxy listen address, e.g. `:80` |
 
 `--proxy-bind :80` forwards `naswii.nintendowifi.net` and `nas.nintendowifi.net`
@@ -71,7 +71,7 @@ to NAS on port 9000. Binding port 80 usually needs `sudo` or
 
 ## Ports
 
-Defaults from `mkw-dwc.cfg` (and `--proxy-bind`):
+Defaults from `mkw-dwc.ini` (and `--proxy-bind`):
 
 | Service | Port | Proto |
 |---------|------|-------|

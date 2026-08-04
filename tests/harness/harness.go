@@ -113,10 +113,10 @@ func (e *Env) NatNegAddr() string {
 	return fmt.Sprintf("127.0.0.1:%d", e.NatNegPort)
 }
 
-// LoadConfig loads mkw-dwc.cfg from the module root.
+// LoadConfig loads mkw-dwc.ini from the module root.
 func LoadConfig(t *testing.T) *config.Config {
 	t.Helper()
-	cfg, err := config.Load(filepath.Join(ModuleRoot(), "mkw-dwc.cfg"))
+	cfg, err := config.Load(filepath.Join(ModuleRoot(), "mkw-dwc.ini"))
 	if err != nil {
 		t.Fatalf("config: %v", err)
 	}

@@ -73,7 +73,7 @@ Put the folder wherever you like. This guide uses `/home/yourusername/mkw-dwc`.
 
 Skip Apache/Nginx. The binary has a built-in proxy.
 
-Default `mkw-dwc.cfg` listens on all interfaces. Edit ports/IPs if needed.
+Default `mkw-dwc.ini` listens on all interfaces. Edit ports/IPs if needed.
 `[Store]` is required. Optional `[Logging]` controls verbosity, colors, and
 per-service log toggles:
 
@@ -119,7 +119,7 @@ Path = "data" # JSON data directory
 Typical run:
 
 ```shell
-sudo ./mkw-dwc --config mkw-dwc.cfg --proxy-bind :80
+sudo ./mkw-dwc --config mkw-dwc.ini --proxy-bind :80
 ```
 
 ---
@@ -179,7 +179,7 @@ Skip dnsmasq. Point these names at your server IP (example `192.168.1.100`):
 
 ```shell
 cd /home/yourusername/mkw-dwc
-sudo ./mkw-dwc --config mkw-dwc.cfg --proxy-bind :80
+sudo ./mkw-dwc --config mkw-dwc.ini --proxy-bind :80
 ```
 
 Expected log lines (timestamps and colors depend on `[Logging]`):
@@ -200,7 +200,7 @@ INFO  app     starting profile
 ```
 
 Store files under `[Store]` `Path` are created on first run. Set
-`Type = "json"` in `mkw-dwc.cfg`.
+`Type = "json"` in `mkw-dwc.ini`.
 
 Confirm with the [health checks](../README.md#quick-start) in the README. If both return `ok`, move on to the Wii.
 
@@ -293,7 +293,7 @@ Either way: clean ISO/WBFS, then try connecting. Failures go to [Troubleshooting
 
 ### `mkw-dwc` won't start
 
-- Confirm Go 1.22+, a valid `mkw-dwc.cfg`, and free ports (`ss -tulpn`)
+- Confirm Go 1.22+, a valid `mkw-dwc.ini`, and free ports (`ss -tulpn`)
 - Port 80 needs `sudo`, `CAP_NET_BIND_SERVICE`, or another `--proxy-bind` port matched on the client side
 
 ### Health check fails
@@ -332,7 +332,7 @@ Type=simple
 User=mkw-dwc
 WorkingDirectory=/opt/mkw-dwc
 ExecStart=/opt/mkw-dwc/mkw-dwc \
-  --config mkw-dwc.cfg \
+  --config mkw-dwc.ini \
   --proxy-bind :80
 Restart=on-failure
 AmbientCapabilities=CAP_NET_BIND_SERVICE
