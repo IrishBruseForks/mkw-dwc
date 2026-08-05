@@ -18,6 +18,7 @@ import (
 //
 // component is the logging component name (for example "nas" or "proxy").
 // When [Logging] DumpFile is set, raw recv/send bytes are written to that file.
+// App wires DumpFile via httpfix.SetDumpFile (config.HTTPDumpFile), not logging.Init.
 //
 // Keep-alive is supported: every request header block is rewritten, not only
 // the first on the connection.

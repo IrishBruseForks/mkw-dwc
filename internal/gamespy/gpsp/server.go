@@ -2,16 +2,14 @@
 package gpsp
 
 import (
-	"bytes"
 	"context"
-	"errors"
-	"io"
 	"net"
 	"strconv"
 	"strings"
 
 	"github.com/IrishBruse/mkw-dwc/internal/database"
 	"github.com/IrishBruse/mkw-dwc/internal/gamespy"
+	"github.com/IrishBruse/mkw-dwc/internal/gamespy/texttcp"
 	"github.com/IrishBruse/mkw-dwc/internal/logging"
 )
 
@@ -23,39 +21,13 @@ type Server struct {
 
 // Serve listens until ctx is cancelled.
 func (s *Server) Serve(ctx context.Context) error {
-	ln, err := net.Listen("tcp", s.Addr)
-	if err != nil {
-		return err
-	}
-	defer ln.Close()
-
-	logging.For("gpsp").Infof("listening on %s", s.Addr)
-
-	go func() {
-		<-ctx.Done()
-		_ = ln.Close()
-	}()
-
-	for {
-		conn, err := ln.Accept()
-		if err != nil {
-			if ctx.Err() != nil {
-				return nil
-			}
-			var ne net.Error
-			if errors.As(err, &ne) && ne.Temporary() {
-				continue
-			}
-			return err
-		}
-		go s.handleConn(conn)
-	}
+	return texttcp.Serve(ctx, s.Addr, "gpsp", s.handleConn)
 }
 
 type connSession struct {
-	server    *Server
-	conn      net.Conn
-	remaining []byte
+	server *Server
+	conn   net.Conn
+	frames texttcp.FrameBuffer
 }
 
 func (s *Server) handleConn(conn net.Conn) {
@@ -66,35 +38,13 @@ func (s *Server) handleConn(conn net.Conn) {
 		conn:   conn,
 	}
 
-	buf := make([]byte, 4096)
-	for {
-		n, err := conn.Read(buf)
-		if err != nil {
-			if !errors.Is(err, io.EOF) {
-				logging.For("gpsp").Errorf("read %s: %v", conn.RemoteAddr(), err)
-			}
-			return
-		}
-		sess.dispatch(buf[:n])
-	}
+	texttcp.ReadLoop(conn, "gpsp", func(chunk []byte) {
+		sess.dispatch(chunk)
+	})
 }
 
 func (s *connSession) dispatch(chunk []byte) {
-	data := append(s.remaining, chunk...)
-	if len(data) > 0 && data[0] != '\\' {
-		const final = "\\final\\"
-		if idx := bytes.Index(data, []byte(final)); idx >= 0 {
-			data = data[idx+len(final):]
-		} else {
-			s.remaining = nil
-			return
-		}
-	}
-
-	commands, remainder := gamespy.ParseGameSpyMessage(data)
-	s.remaining = remainder
-
-	for _, cmd := range commands {
+	for _, cmd := range s.frames.Consume(chunk) {
 		switch cmd["__cmd__"] {
 		case "otherslist":
 			s.performOtherslist(cmd)
@@ -127,8 +77,14 @@ func buildOtherslistReply(opids string, db database.Store) []byte {
 			pairs = append(pairs, gamespy.KV{Key: "o", Value: pidStr})
 
 			uniquenick := ""
-			if pid, err := strconv.ParseInt(pidStr, 10, 64); err == nil {
-				if profile, err := db.GetProfile(pid); err == nil && profile != nil {
+			pid, err := strconv.ParseInt(pidStr, 10, 64)
+			if err != nil {
+				logging.For("gpsp").Warnf("otherslist bad opid %q: %v", pidStr, err)
+			} else {
+				profile, err := db.GetProfile(pid)
+				if err != nil {
+					logging.For("gpsp").Debugf("otherslist profile %d: %v", pid, err)
+				} else if profile != nil {
 					uniquenick = profile.Uniquenick
 				}
 			}

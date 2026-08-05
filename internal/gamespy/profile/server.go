@@ -2,12 +2,9 @@
 package profile
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"errors"
-	"io"
 	"math/big"
 	"net"
 	"strconv"
@@ -15,6 +12,7 @@ import (
 
 	"github.com/IrishBruse/mkw-dwc/internal/database"
 	"github.com/IrishBruse/mkw-dwc/internal/gamespy"
+	"github.com/IrishBruse/mkw-dwc/internal/gamespy/texttcp"
 	"github.com/IrishBruse/mkw-dwc/internal/logging"
 )
 
@@ -26,33 +24,7 @@ type Server struct {
 
 // Serve listens until ctx is cancelled.
 func (s *Server) Serve(ctx context.Context) error {
-	ln, err := net.Listen("tcp", s.Addr)
-	if err != nil {
-		return err
-	}
-	defer ln.Close()
-
-	logging.For("profile").Infof("listening on %s", s.Addr)
-
-	go func() {
-		<-ctx.Done()
-		_ = ln.Close()
-	}()
-
-	for {
-		conn, err := ln.Accept()
-		if err != nil {
-			if ctx.Err() != nil {
-				return nil
-			}
-			var ne net.Error
-			if errors.As(err, &ne) && ne.Temporary() {
-				continue
-			}
-			return err
-		}
-		go s.handleConn(conn)
-	}
+	return texttcp.Serve(ctx, s.Addr, "profile", s.handleConn)
 }
 
 type connSession struct {
@@ -61,7 +33,7 @@ type connSession struct {
 	challenge string
 	sesskey   string
 	profileid int64
-	remaining []byte
+	frames    texttcp.FrameBuffer
 }
 
 func (s *Server) handleConn(conn net.Conn) {
@@ -76,18 +48,10 @@ func (s *Server) handleConn(conn net.Conn) {
 		return
 	}
 
-	buf := make([]byte, 4096)
-	for {
-		n, err := conn.Read(buf)
-		if err != nil {
-			if !errors.Is(err, io.EOF) {
-				logging.For("profile").Errorf("read %s: %v", conn.RemoteAddr(), err)
-			}
-			sess.cleanup()
-			return
-		}
-		sess.dispatch(buf[:n])
-	}
+	texttcp.ReadLoop(conn, "profile", func(chunk []byte) {
+		sess.dispatch(chunk)
+	})
+	sess.cleanup()
 }
 
 func (s *connSession) sendLoginChallenge() error {
@@ -103,21 +67,7 @@ func (s *connSession) sendLoginChallenge() error {
 }
 
 func (s *connSession) dispatch(chunk []byte) {
-	data := append(s.remaining, chunk...)
-	if len(data) > 0 && data[0] != '\\' {
-		const final = "\\final\\"
-		if idx := bytes.Index(data, []byte(final)); idx >= 0 {
-			data = data[idx+len(final):]
-		} else {
-			s.remaining = nil
-			return
-		}
-	}
-
-	commands, remainder := gamespy.ParseGameSpyMessage(data)
-	s.remaining = remainder
-
-	for _, cmd := range commands {
+	for _, cmd := range s.frames.Consume(chunk) {
 		switch cmd["__cmd__"] {
 		case "login":
 			s.performLogin(cmd)
@@ -243,12 +193,11 @@ func (s *connSession) performUpdatePro(cmd map[string]string) {
 		return
 	}
 
+	// Match dwc_network_server_emulator: only firstname/lastname are writable.
 	fields := make(map[string]string)
 	for key, value := range cmd {
 		switch key {
-		case "__cmd__", "__cmd_val__", "updatepro", "partnerid", "sesskey":
-			continue
-		default:
+		case "firstname", "lastname":
 			fields[key] = value
 		}
 	}

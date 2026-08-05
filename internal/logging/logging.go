@@ -23,8 +23,7 @@ type Settings struct {
 	Natneg     bool
 	Proxy      bool
 	App        bool
-	LogFile    string // optional mirror of user-facing logs (empty = stderr only)
-	DumpFile   string // raw NAS/proxy TCP dump file path (empty = disabled)
+	LogFile string // optional mirror of user-facing logs (empty = stderr only)
 }
 
 type level int
@@ -209,12 +208,12 @@ func (l *Logger) log(lvl level, format string, args ...any) {
 		console = formatLine(lvl, l.component, msg, ts, true)
 	}
 
-	mu.Lock()
+	// Writers were snapshotted under mu; write outside so file I/O does not
+	// serialize every GameSpy goroutine on the logging lock.
 	_, _ = io.WriteString(w, console)
 	if fw != nil {
 		_, _ = io.WriteString(fw, plain)
 	}
-	mu.Unlock()
 }
 
 func formatLine(lvl level, component, msg string, ts, color bool) string {

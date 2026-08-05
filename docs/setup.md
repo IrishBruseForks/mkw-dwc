@@ -85,13 +85,14 @@ Color = auto # auto | always | never (ANSI colors when stderr is a TTY)
 Timestamps = true # prefix each line with date/time
 Nas = true # NAS HTTP server
 Profile = true # GPCM profile server
+Gpsp = true # GPSP player search
 Qr = true # QR / master server
 Browser = true # server browser
 Natneg = true # NAT negotiation
 Proxy = true # reverse proxy
 App = true # startup and lifecycle
-LogFile = logs/mkw-dwc.log # mirror stderr INFO/WARN/ERROR lines (empty to disable)
-DumpFile = logs/http-traffic.log # raw NAS/proxy TCP dumps (empty to disable; debug 20100/23400)
+LogFile = # mirror stderr INFO/WARN/ERROR lines (empty to disable)
+DumpFile = # raw NAS/proxy TCP dumps (empty to disable; set a path to debug 20100/23400)
 
 [NasServer]
 IP = 0.0.0.0 # bind address
@@ -101,6 +102,7 @@ SvcHost = dls1.nintendowifi.net # hostname returned for NAS service location
 [GameSpyQRServer]
 IP = 0.0.0.0 # bind address
 Port = 27900 # UDP listen port
+RewriteDolphinLocalIP = true # rewrite Dolphin localip0=10.0.1.30; set false on a public VPS
 
 [GameSpyNatNegServer]
 IP = 0.0.0.0 # bind address
@@ -197,7 +199,7 @@ Expected log lines (timestamps and colors depend on `[Logging]`):
 
 ```
 INFO  app     store: type=json path=data
-INFO  app     logging: level=debug color=auto timestamps=false log_file="logs/mkw-dwc.log" dump_file="logs/http-traffic.log"
+INFO  app     logging: level=info color=auto timestamps=true log_file="" dump_file=""
 INFO  app     nas: :9000
 INFO  app     profile: :29900
 INFO  app     gpsp: :29901

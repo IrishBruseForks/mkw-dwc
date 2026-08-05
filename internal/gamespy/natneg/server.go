@@ -123,7 +123,7 @@ func (s *Server) Serve(ctx context.Context) error {
 				return nil
 			}
 			var ne net.Error
-			if errors.As(err, &ne) && ne.Temporary() {
+			if errors.As(err, &ne) && ne.Timeout() {
 				continue
 			}
 			return err

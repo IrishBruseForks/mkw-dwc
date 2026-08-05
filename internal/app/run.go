@@ -46,7 +46,7 @@ func Run() {
 		fmt.Fprintf(os.Stderr, "logging init: %v\n", err)
 		os.Exit(1)
 	}
-	if err := httpfix.SetDumpFile(logCfg.DumpFile); err != nil {
+	if err := httpfix.SetDumpFile(cfg.HTTPDumpFile()); err != nil {
 		fmt.Fprintf(os.Stderr, "dump file: %v\n", err)
 		os.Exit(1)
 	}
@@ -103,7 +103,7 @@ func Run() {
 	}
 
 	log.Infof("store: type=%s path=%s", storeCfg.Type, storeCfg.Path)
-	log.Infof("logging: level=%s color=%s timestamps=%t log_file=%q dump_file=%q", logCfg.Level, logCfg.Color, logCfg.Timestamps, logCfg.LogFile, logCfg.DumpFile)
+	log.Infof("logging: level=%s color=%s timestamps=%t log_file=%q dump_file=%q", logCfg.Level, logCfg.Color, logCfg.Timestamps, logCfg.LogFile, cfg.HTTPDumpFile())
 	log.Infof("nas: %s", formatListenAddr(nasHost, nasPort))
 	log.Infof("profile: %s", formatListenAddr(profileHost, profilePort))
 	log.Infof("gpsp: %s", formatListenAddr(gpspHost, gpspPort))
@@ -116,6 +116,11 @@ func Run() {
 
 	qrServer := qr.New(formatListenAddr(qrHost, qrPort), be, keys)
 	qrServer.Profiles = gpcm
+	if rewrite, err := cfg.SectionBool("GameSpyQRServer", "RewriteDolphinLocalIP", false); err != nil {
+		log.Fatalf("qr RewriteDolphinLocalIP: %v", err)
+	} else {
+		qrServer.RewriteDolphinLocalIP = rewrite
+	}
 	browserServer := browser.New(formatListenAddr(browserHost, browserPort), be, keys, qrServer)
 
 	nasServer := &nas.Server{

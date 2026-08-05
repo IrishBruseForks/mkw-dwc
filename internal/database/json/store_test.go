@@ -88,6 +88,9 @@ func TestJSONStoreRoundTrip(t *testing.T) {
 	if prof2.Firstname != "Wii:test@ABCD" || prof2.Lastname != "Player" {
 		t.Fatalf("updated profile: %+v", prof2)
 	}
+	if err := s.UpdateProfile(profileid, map[string]string{"lon": "1"}); err == nil {
+		t.Fatal("UpdateProfile should reject unsupported fields")
+	}
 
 	if err := s.DeleteSession(sesskey); err != nil {
 		t.Fatalf("delete session: %v", err)

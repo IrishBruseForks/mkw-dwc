@@ -165,11 +165,34 @@ func (c *Config) LoggingSettings() (logging.Settings, error) {
 	if v, ok := sec["LogFile"]; ok {
 		s.LogFile = strings.TrimSpace(v)
 	}
-	if v, ok := sec["DumpFile"]; ok {
-		s.DumpFile = strings.TrimSpace(v)
-	}
 
 	return s, nil
+}
+
+// HTTPDumpFile returns optional [Logging] DumpFile for raw NAS/proxy TCP dumps.
+// Owned by httpfix (via app wiring), not logging.Init.
+func (c *Config) HTTPDumpFile() string {
+	if sec, ok := c.sections["Logging"]; ok {
+		return strings.TrimSpace(sec["DumpFile"])
+	}
+	return ""
+}
+
+// SectionBool returns a boolean from a section key, or defaultVal if unset.
+func (c *Config) SectionBool(section, key string, defaultVal bool) (bool, error) {
+	sec, ok := c.sections[section]
+	if !ok {
+		return defaultVal, nil
+	}
+	v, ok := sec[key]
+	if !ok || v == "" {
+		return defaultVal, nil
+	}
+	b, err := parseBool(v)
+	if err != nil {
+		return false, fmt.Errorf("config: section %q invalid %s %q: %w", section, key, v, err)
+	}
+	return b, nil
 }
 
 func validateLogLevel(level string) error {

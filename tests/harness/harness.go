@@ -59,6 +59,7 @@ func Start(t *testing.T, gpcm database.Store) *Env {
 	}
 
 	qrSrv := qr.New(fmt.Sprintf(":%d", env.QRPort), be, keys)
+	qrSrv.RewriteDolphinLocalIP = true
 	qrSrv.Profiles = gpcm
 	browserSrv := browser.New(fmt.Sprintf(":%d", env.BrowserPort), be, keys, qrSrv)
 	nasSrv := &nas.Server{

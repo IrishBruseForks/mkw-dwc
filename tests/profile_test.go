@@ -24,7 +24,7 @@ func TestProfileReferenceHandlers(t *testing.T) {
 
 	harness.ProfileKA(t, env.ProfileAddr())
 
-	conn, profileID2, sesskey := harness.ProfileSession(t, env.ProfileAddr(), token, acChallenge)
+	conn, profileID2, sesskey, _ := harness.ProfileSession(t, env.ProfileAddr(), token, acChallenge)
 	defer conn.Close()
 	if profileID2 != profileID {
 		t.Fatalf("session profileid=%d want %d", profileID2, profileID)

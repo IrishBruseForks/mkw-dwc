@@ -67,21 +67,25 @@ func ProfileLogin(t *testing.T, addr, authtoken, acChallenge string) int64 {
 }
 
 // ProfileSession dials, completes login, and returns the live connection plus ids.
-func ProfileSession(t *testing.T, addr, authtoken, acChallenge string) (net.Conn, int64, string) {
+func ProfileSession(t *testing.T, addr, authtoken, acChallenge string) (conn net.Conn, profileID int64, sesskey, uniquenick string) {
 	t.Helper()
-	conn, err := net.Dial("tcp", addr)
+	c, err := net.Dial("tcp", addr)
 	if err != nil {
 		t.Fatalf("profile dial: %v", err)
 	}
-	conn.SetDeadline(time.Now().Add(5 * time.Second))
+	c.SetDeadline(time.Now().Add(5 * time.Second))
 
 	buf := make([]byte, 4096)
-	n, err := conn.Read(buf)
+	n, err := c.Read(buf)
 	if err != nil {
-		conn.Close()
+		c.Close()
 		t.Fatalf("profile lc read: %v", err)
 	}
 	serverChallenge := GameSpyField(string(buf[:n]), "challenge")
+	if serverChallenge == "" {
+		c.Close()
+		t.Fatalf("missing server challenge: %q", buf[:n])
+	}
 	clientChallenge := "CLIENTCHAL"
 	response := gamespy.GenerateResponse(serverChallenge, acChallenge, clientChallenge, authtoken)
 	loginMsg := gamespy.CreateGameSpyMessage(map[string]string{
@@ -92,27 +96,28 @@ func ProfileSession(t *testing.T, addr, authtoken, acChallenge string) (net.Conn
 		"response":    response,
 		"id":          "1",
 	})
-	if _, err := conn.Write(loginMsg); err != nil {
-		conn.Close()
+	if _, err := c.Write(loginMsg); err != nil {
+		c.Close()
 		t.Fatalf("profile login write: %v", err)
 	}
-	n, err = conn.Read(buf)
+	n, err = c.Read(buf)
 	if err != nil {
-		conn.Close()
+		c.Close()
 		t.Fatalf("profile login read: %v", err)
 	}
 	msg := string(buf[:n])
 	if strings.Contains(msg, `\error\`) {
-		conn.Close()
+		c.Close()
 		t.Fatalf("profile login error: %q", msg)
 	}
-	profileID, _ := strconv.ParseInt(GameSpyField(msg, "profileid"), 10, 64)
-	sesskey := GameSpyField(msg, "sesskey")
-	if profileID == 0 || sesskey == "" {
-		conn.Close()
+	profileID, _ = strconv.ParseInt(GameSpyField(msg, "profileid"), 10, 64)
+	sesskey = GameSpyField(msg, "sesskey")
+	uniquenick = GameSpyField(msg, "uniquenick")
+	if profileID == 0 || sesskey == "" || uniquenick == "" {
+		c.Close()
 		t.Fatalf("profile login incomplete: %q", msg)
 	}
-	return conn, profileID, sesskey
+	return c, profileID, sesskey, uniquenick
 }
 
 // ProfileKA sends keep-alive and expects a reply.

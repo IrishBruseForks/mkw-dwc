@@ -89,11 +89,8 @@ func (s *Server) Serve(ctx context.Context) error {
 			if ctx.Err() != nil {
 				return nil
 			}
-			var ne net.Error
-			if errors.As(err, &ne) && ne.Temporary() {
-				continue
-			}
-			return err
+			logging.For("browser").Warnf("accept: %v", err)
+			continue
 		}
 		go s.handleConn(conn)
 	}
@@ -288,7 +285,7 @@ func (sess *connSession) findServer(queryGame, filter string, fields []string, m
 	logging.For("browser").Infof("returning %d room(s) for game=%q", len(results), queryGame)
 	for i, result := range results {
 		fm := result.Record.AsMap()
-		logging.For("browser").Infof(
+		logging.For("browser").Debugf(
 			"  room[%d] session=%08x dwc_pid=%s hoststate=%s mtype=%s suspend=%s rk=%s ev=%s publicip=%s requested=%v",
 			i,
 			result.Record.SessionID,
@@ -443,7 +440,7 @@ func (sess *connSession) handleSendMessage(packet []byte) {
 	destPort := int(binary.BigEndian.Uint16(packet[7:9]))
 	payload := packet[9:]
 
-	logging.For("browser").Infof("send message from %s -> %s:%d payload=%d bytes", sess.conn.RemoteAddr(), destIP.String(), destPort, len(payload))
+	logging.For("browser").Debugf("send message from %s -> %s:%d payload=%d bytes", sess.conn.RemoteAddr(), destIP.String(), destPort, len(payload))
 
 	destAddr := net.UDPAddr{IP: destIP, Port: destPort}
 	sess.forwardToClient(payload, destAddr)
@@ -474,7 +471,7 @@ func (sess *connSession) forwardToClient(data []byte, forwardClient net.UDPAddr)
 
 	if len(data) == 10 && len(data) >= 6 && bytes.Equal(data[:6], natnegMagic) {
 		natnegSession := int32(binary.LittleEndian.Uint32(data[6:10]))
-		logging.For("browser").Infof("natneg cookie session=%d for %s own=%v", natnegSession, forwardClient.String(), sess.ownServer != nil)
+		logging.For("browser").Debugf("natneg cookie session=%d for %s own=%v", natnegSession, forwardClient.String(), sess.ownServer != nil)
 		sess.server.Backend.AddNatnegServer(uint32(natnegSession), server.AsMap())
 		if sess.ownServer != nil {
 			sess.server.Backend.AddNatnegServer(uint32(natnegSession), sess.ownServer.AsMap())

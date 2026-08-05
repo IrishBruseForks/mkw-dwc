@@ -5,6 +5,16 @@ machine. For LAN hardware Wii hosting, see [Setup](setup.md).
 
 Walk through these steps in order. Default `mkw-dwc.ini` is fine for local use
 (`[Store]` should already be `Type = "json"` / `Path = "data"`).
+`RewriteDolphinLocalIP = true` under `[GameSpyQRServer]` is on by default so two
+local Dolphin clients can join each other. For verbose debug / HTTP dumps, set
+in `[Logging]`:
+
+```ini
+Level = debug
+Timestamps = false
+LogFile = logs/mkw-dwc.log
+DumpFile = logs/http-traffic.log
+```
 
 ## What you need
 

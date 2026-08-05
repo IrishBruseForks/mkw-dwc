@@ -227,23 +227,22 @@ func (s *Store) UpdateProfile(profileID int64, fields map[string]string) error {
 	}
 
 	u := &s.users[idx]
+	changed := false
 	for key, value := range fields {
 		switch key {
 		case "firstname":
 			u.Firstname = value
+			changed = true
 		case "lastname":
 			u.Lastname = value
-		case "lon":
-			u.Lon = value
-		case "lat":
-			u.Lat = value
-		case "loc":
-			u.Loc = value
-		case "zipcode":
-			u.Zipcode = value
-		case "aim":
-			u.Aim = value
+			changed = true
+		default:
+			// Match dwc_network_server_emulator gs_database.update_profile allowlist.
+			return fmt.Errorf("json: unsupported profile field %q", key)
 		}
+	}
+	if !changed {
+		return nil
 	}
 	return s.persistFileLocked("users.json", s.users)
 }

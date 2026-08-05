@@ -28,10 +28,11 @@ type IngameSNLookup interface {
 
 // Server serves GameSpy QR (Query & Reporting) over UDP.
 type Server struct {
-	Addr     string
-	Backend  *backend.Backend
-	Keys     map[string]string
-	Profiles IngameSNLookup
+	Addr                  string
+	Backend               *backend.Backend
+	Keys                  map[string]string
+	Profiles              IngameSNLookup
+	RewriteDolphinLocalIP bool // rewrite Dolphin localip0=10.0.1.30 to UDP source IP
 
 	mu       sync.Mutex
 	sessions map[uint32]*qrSession
@@ -231,6 +232,10 @@ func (s *Server) handleChallengeResponse(sessionID uint32, recvData []byte, addr
 	heartbeatData := sess.heartbeatData
 	s.mu.Unlock()
 
+	if len(recvData) < 6 {
+		logging.For("qr").Warnf("challenge too short session=%08x from %s len=%d", sessionID, addr.String(), len(recvData))
+		return
+	}
 	clientChallenge := string(recvData[5 : len(recvData)-1])
 
 	expected := gamespy.PrepareRC4Base64(secretkey, challenge)
@@ -299,11 +304,13 @@ func (s *Server) handleHeartbeat(sessionID uint32, sessionIDRaw []byte, recvData
 	// loopback /etc/hosts setup), MKWii skips NATNEG and tries LAN connect via
 	// localip0, which never works for two Dolphin instances. Rewrite to the
 	// real UDP source IP so same-machine clients can reach each other.
-	if localip0, ok := k["localip0"]; ok && localip0 == "10.0.1.30" {
-		if ip4 := addr.IP.To4(); ip4 != nil {
-			fixed := ip4.String()
-			logging.For("qr").Infof("dolphin localip0 rewrite session=%08x %s -> %s", sessionID, localip0, fixed)
-			k["localip0"] = fixed
+	if s.RewriteDolphinLocalIP {
+		if localip0, ok := k["localip0"]; ok && localip0 == "10.0.1.30" {
+			if ip4 := addr.IP.To4(); ip4 != nil {
+				fixed := ip4.String()
+				logging.For("qr").Debugf("dolphin localip0 rewrite session=%08x %s -> %s", sessionID, localip0, fixed)
+				k["localip0"] = fixed
+			}
 		}
 	}
 
@@ -392,7 +399,7 @@ func (s *Server) updateServerList(sessionID uint32, k map[string]string) {
 	s.mu.Unlock()
 
 	_ = s.Backend.UpdateServerList(gamename, sessionID, k, console)
-	logging.For("qr").Infof(
+	logging.For("qr").Debugf(
 		"room registered gamename=%s session=%08x dwc_pid=%s hoststate=%s mtype=%s suspend=%s rk=%s ev=%s publicip=%s publicport=%s numplayers=%s",
 		gamename,
 		sessionID,

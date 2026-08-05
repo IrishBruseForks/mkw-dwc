@@ -1,6 +1,7 @@
 package gpsp
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -11,25 +12,25 @@ type fakeStore struct {
 	profiles map[int64]*database.Profile
 }
 
-func (f *fakeStore) Close() error { return nil }
-func (f *fakeStore) Initialize() error { return nil }
-func (f *fakeStore) GetNextAvailableUserid() string { return "" }
-func (f *fakeStore) IsBanned(_, _ string) bool { return false }
+func (f *fakeStore) Close() error                                         { return nil }
+func (f *fakeStore) Initialize() error                                    { return nil }
+func (f *fakeStore) GetNextAvailableUserid() string                       { return "" }
+func (f *fakeStore) IsBanned(_, _ string) bool                            { return false }
 func (f *fakeStore) StoreNasLogin(_, _ string, _ map[string]string) error { return nil }
-func (f *fakeStore) GetNasLogin(_ string) (map[string]string, error) { return nil, nil }
-func (f *fakeStore) GetIngameSN(_ int64) (string, error) { return "", nil }
+func (f *fakeStore) GetNasLogin(_ string) (map[string]string, error)      { return nil, nil }
+func (f *fakeStore) GetIngameSN(_ int64) (string, error)                  { return "", nil }
 func (f *fakeStore) GetProfile(profileID int64) (*database.Profile, error) {
 	if p, ok := f.profiles[profileID]; ok {
 		return p, nil
 	}
-	return nil, nil
+	return nil, fmt.Errorf("json: profile %d not found", profileID)
 }
 func (f *fakeStore) UpdateProfile(_ int64, _ map[string]string) error { return nil }
 func (f *fakeStore) LoginProfileFromAuth(_ map[string]string) (string, int64, string, string, error) {
 	return "", 0, "", "", nil
 }
 func (f *fakeStore) CreateSession(_ int64) (string, string, error) { return "", "", nil }
-func (f *fakeStore) DeleteSession(_ string) error { return nil }
+func (f *fakeStore) DeleteSession(_ string) error                  { return nil }
 
 func TestBuildOtherslistReply(t *testing.T) {
 	db := &fakeStore{

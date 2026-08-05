@@ -108,11 +108,11 @@ Path = "data"
 	if !s.Nas || !s.Profile || !s.Gpsp || !s.Qr || !s.Browser || !s.Natneg || !s.Proxy || !s.App {
 		t.Fatalf("service defaults should be true: %+v", s)
 	}
-	if s.DumpFile != "" {
-		t.Fatalf("DumpFile default should be empty: %+v", s)
-	}
 	if s.LogFile != "" {
 		t.Fatalf("LogFile default should be empty: %+v", s)
+	}
+	if cfg.HTTPDumpFile() != "" {
+		t.Fatalf("DumpFile default should be empty: %q", cfg.HTTPDumpFile())
 	}
 }
 
@@ -176,11 +176,14 @@ DumpFile = logs/traffic.log
 	}
 	want := struct {
 		Nas, Profile, Gpsp, Qr, Browser, Natneg, Proxy, App bool
-		LogFile, DumpFile                                   string
-	}{false, true, true, false, true, false, true, false, "logs/app.log", "logs/traffic.log"}
+		LogFile                                             string
+	}{false, true, true, false, true, false, true, false, "logs/app.log"}
 	if s.Nas != want.Nas || s.Profile != want.Profile || s.Gpsp != want.Gpsp || s.Qr != want.Qr ||
 		s.Browser != want.Browser || s.Natneg != want.Natneg || s.Proxy != want.Proxy ||
-		s.App != want.App || s.LogFile != want.LogFile || s.DumpFile != want.DumpFile {
+		s.App != want.App || s.LogFile != want.LogFile {
 		t.Fatalf("unexpected service flags: got %+v want %+v", s, want)
+	}
+	if cfg.HTTPDumpFile() != "logs/traffic.log" {
+		t.Fatalf("DumpFile: got %q", cfg.HTTPDumpFile())
 	}
 }
