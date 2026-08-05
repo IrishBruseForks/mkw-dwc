@@ -31,6 +31,19 @@ Only these Host values are proxied:
 
 Any other Host gets `404 unhandled host`.
 
+Mario Kart Wii sends the `Host` header twice. Go's `net/http` rejects that with
+`400`, which shows up in-game as **error 23400**. Both this proxy and NAS wrap
+their listeners with `internal/httpfix` to drop the duplicate before parsing.
+
+Keep-alive is supported: every request header block is rewritten, not only the
+first on the connection. Without that, a second POST on the same TCP socket
+(duplicate `Host` again) gets HTTP 400 from Go.
+
+With `[Logging] DumpFile` set to a path, the wrapper writes verbose raw
+`accept` / `recv` / `send` records to that file (not stderr) and still warns
+on stderr if the client opens with a TLS handshake (typical cause of **error
+20100** when NoSSL is not running).
+
 ## What the Wii does
 
 With DNS pointing `*.nintendowifi.net` (or at least the NAS names) at your

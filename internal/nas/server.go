@@ -16,8 +16,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/IrishBruse/mkw-dwc/internal/logging"
 	"github.com/IrishBruse/mkw-dwc/internal/database"
+	"github.com/IrishBruse/mkw-dwc/internal/httpfix"
+	"github.com/IrishBruse/mkw-dwc/internal/logging"
 )
 
 const (
@@ -48,8 +49,12 @@ func (s *Server) Serve(ctx context.Context) error {
 		defer cancel()
 		_ = srv.Shutdown(shutdownCtx)
 	}()
+	ln, err := net.Listen("tcp", s.Addr)
+	if err != nil {
+		return err
+	}
 	logging.For("nas").Infof("listening on %s", s.Addr)
-	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+	if err := srv.Serve(httpfix.WrapListener(ln, "nas")); err != nil && err != http.ErrServerClosed {
 		return err
 	}
 	return nil

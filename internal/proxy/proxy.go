@@ -1,15 +1,16 @@
-
 // Package proxy provides a host-based HTTP reverse proxy for Nintendo NAS domains.
 package proxy
 
 import (
 	"context"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"strings"
 	"time"
 
+	"github.com/IrishBruse/mkw-dwc/internal/httpfix"
 	"github.com/IrishBruse/mkw-dwc/internal/logging"
 )
 
@@ -60,8 +61,12 @@ func Serve(ctx context.Context, bindAddr string, nasBackendURL string) error {
 		_ = srv.Shutdown(shutdownCtx)
 	}()
 
+	ln, err := net.Listen("tcp", bindAddr)
+	if err != nil {
+		return err
+	}
 	logging.For("proxy").Infof("listening on %s forwarding to %s", bindAddr, nasBackendURL)
-	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+	if err := srv.Serve(httpfix.WrapListener(ln, "proxy")); err != nil && err != http.ErrServerClosed {
 		return err
 	}
 	return nil

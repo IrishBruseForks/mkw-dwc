@@ -289,7 +289,9 @@ Either way: clean ISO/WBFS, then try connecting. Failures go to [Troubleshooting
 
 ## Troubleshooting
 
-**Stop the server:** exit the `mkw-dwc` terminal, or `sudo systemctl stop mkw-dwc` if using systemd. Disconnecting while online usually yields EC 84010 or 91010.
+**Stop the server:** exit the `mkw-dwc` terminal, or
+`sudo systemctl stop mkw-dwc` if using systemd. Disconnecting while online
+usually yields EC 84010 or 91010.
 
 ### `mkw-dwc` won't start
 
@@ -312,7 +314,9 @@ Either way: clean ISO/WBFS, then try connecting. Failures go to [Troubleshooting
 ### MKWii error codes
 
 - **20100** - dirty ISO, NoSSL missing, wrong Wii DNS, or very bad network
-- **234XX** - SSL/proxy mismatch. Enable NoSSL and use `--proxy-bind :80`
+- **234XX** - SSL/proxy mismatch, or NAS HTTP rejected (duplicate `Host`
+  headers from MKW/Dolphin used to 400 in Go). Enable NoSSL, use
+  `--proxy-bind :80`, and run a build that strips duplicate Host headers
 - **23502** - something on port 80, but `mkw-dwc` is not running
 - **5XXXX** - no Wii internet connection, or network issue
 - **60000** - license already has a Friend Code. Use a brand new license
