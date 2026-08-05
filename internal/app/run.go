@@ -12,16 +12,17 @@ import (
 
 	"github.com/IrishBruse/mkw-dwc/internal/backend"
 	"github.com/IrishBruse/mkw-dwc/internal/config"
+	"github.com/IrishBruse/mkw-dwc/internal/database"
+	dbjson "github.com/IrishBruse/mkw-dwc/internal/database/json"
 	"github.com/IrishBruse/mkw-dwc/internal/gamespy"
 	"github.com/IrishBruse/mkw-dwc/internal/gamespy/browser"
 	"github.com/IrishBruse/mkw-dwc/internal/gamespy/natneg"
 	"github.com/IrishBruse/mkw-dwc/internal/gamespy/profile"
 	"github.com/IrishBruse/mkw-dwc/internal/gamespy/qr"
+	"github.com/IrishBruse/mkw-dwc/internal/httpfix"
 	"github.com/IrishBruse/mkw-dwc/internal/logging"
 	"github.com/IrishBruse/mkw-dwc/internal/nas"
 	"github.com/IrishBruse/mkw-dwc/internal/proxy"
-	"github.com/IrishBruse/mkw-dwc/internal/database"
-	dbjson "github.com/IrishBruse/mkw-dwc/internal/database/json"
 )
 
 func Run() {
@@ -42,6 +43,10 @@ func Run() {
 	}
 	if err := logging.Init(logCfg); err != nil {
 		fmt.Fprintf(os.Stderr, "logging init: %v\n", err)
+		os.Exit(1)
+	}
+	if err := httpfix.SetDumpFile(logCfg.DumpFile); err != nil {
+		fmt.Fprintf(os.Stderr, "dump file: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -92,7 +97,7 @@ func Run() {
 	}
 
 	log.Infof("store: type=%s path=%s", storeCfg.Type, storeCfg.Path)
-	log.Infof("logging: level=%s color=%s timestamps=%t", logCfg.Level, logCfg.Color, logCfg.Timestamps)
+	log.Infof("logging: level=%s color=%s timestamps=%t log_file=%q dump_file=%q", logCfg.Level, logCfg.Color, logCfg.Timestamps, logCfg.LogFile, logCfg.DumpFile)
 	log.Infof("nas: %s", formatListenAddr(nasHost, nasPort))
 	log.Infof("profile: %s", formatListenAddr(profileHost, profilePort))
 	log.Infof("qr: %s", formatListenAddr(qrHost, qrPort))

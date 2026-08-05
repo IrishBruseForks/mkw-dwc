@@ -89,6 +89,8 @@ Browser = true # server browser
 Natneg = true # NAT negotiation
 Proxy = true # reverse proxy
 App = true # startup and lifecycle
+LogFile = logs/mkw-dwc.log # mirror stderr INFO/WARN/ERROR lines (empty to disable)
+DumpFile = logs/http-traffic.log # raw NAS/proxy TCP dumps (empty to disable; debug 20100/23400)
 
 [NasServer]
 IP = 0.0.0.0 # bind address
@@ -186,7 +188,7 @@ Expected log lines (timestamps and colors depend on `[Logging]`):
 
 ```
 INFO  app     store: type=json path=data
-INFO  app     logging: level=info color=auto timestamps=true
+INFO  app     logging: level=debug color=auto timestamps=false log_file="logs/mkw-dwc.log" dump_file="logs/http-traffic.log"
 INFO  app     nas: :9000
 INFO  app     profile: :29900
 INFO  app     qr: :27900

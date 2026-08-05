@@ -105,8 +105,14 @@ Path = "data"
 	if s.Level != "info" || s.Color != "auto" || !s.Timestamps {
 		t.Fatalf("unexpected defaults: %+v", s)
 	}
-	if !s.Nas || !s.Profile || !s.Qr || !s.Browser || !s.Natneg || !s.Proxy || !s.App {
+	if !s.Nas || !s.Profile || !s.Gpsp || !s.Qr || !s.Browser || !s.Natneg || !s.Proxy || !s.App {
 		t.Fatalf("service defaults should be true: %+v", s)
+	}
+	if s.DumpFile != "" {
+		t.Fatalf("DumpFile default should be empty: %+v", s)
+	}
+	if s.LogFile != "" {
+		t.Fatalf("LogFile default should be empty: %+v", s)
 	}
 }
 
@@ -151,6 +157,8 @@ Browser = true
 Natneg = false
 Proxy = 1
 App = 0
+LogFile = logs/app.log
+DumpFile = logs/traffic.log
 `
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
@@ -167,10 +175,12 @@ App = 0
 		t.Fatalf("unexpected level/color/timestamps: %+v", s)
 	}
 	want := struct {
-		Nas, Profile, Qr, Browser, Natneg, Proxy, App bool
-	}{false, true, false, true, false, true, false}
-	if s.Nas != want.Nas || s.Profile != want.Profile || s.Qr != want.Qr ||
-		s.Browser != want.Browser || s.Natneg != want.Natneg || s.Proxy != want.Proxy || s.App != want.App {
+		Nas, Profile, Gpsp, Qr, Browser, Natneg, Proxy, App bool
+		LogFile, DumpFile                                   string
+	}{false, true, true, false, true, false, true, false, "logs/app.log", "logs/traffic.log"}
+	if s.Nas != want.Nas || s.Profile != want.Profile || s.Gpsp != want.Gpsp || s.Qr != want.Qr ||
+		s.Browser != want.Browser || s.Natneg != want.Natneg || s.Proxy != want.Proxy ||
+		s.App != want.App || s.LogFile != want.LogFile || s.DumpFile != want.DumpFile {
 		t.Fatalf("unexpected service flags: got %+v want %+v", s, want)
 	}
 }

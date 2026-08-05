@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -16,11 +17,14 @@ type Settings struct {
 	Timestamps bool   // default true
 	Nas        bool   // default true
 	Profile    bool
+	Gpsp       bool
 	Qr         bool
 	Browser    bool
 	Natneg     bool
 	Proxy      bool
 	App        bool
+	LogFile    string // optional mirror of user-facing logs (empty = stderr only)
+	DumpFile   string // raw NAS/proxy TCP dump file path (empty = disabled)
 }
 
 type level int
@@ -46,13 +50,16 @@ var (
 	components  = map[string]bool{
 		"nas":     true,
 		"profile": true,
+		"gpsp":    true,
 		"qr":      true,
 		"browser": true,
 		"natneg":  true,
 		"proxy":   true,
 		"app":     true,
 	}
-	out io.Writer = os.Stderr
+	out     io.Writer = os.Stderr
+	fileOut io.Writer
+	logFile *os.File
 
 	noop = &Logger{enabled: false}
 
@@ -85,24 +92,51 @@ func Init(s Settings) error {
 	if color == "" {
 		color = "auto"
 	}
+	var colorOn bool
 	switch color {
 	case "auto":
-		useColor = stderrIsTerminal()
+		colorOn = stderrIsTerminal()
 	case "always":
-		useColor = true
+		colorOn = true
 	case "never":
-		useColor = false
+		colorOn = false
 	default:
 		return fmt.Errorf("logging: invalid color %q (want auto, always, or never)", s.Color)
+	}
+
+	var newFile *os.File
+	if path := strings.TrimSpace(s.LogFile); path != "" {
+		if dir := filepath.Dir(path); dir != "" && dir != "." {
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				return fmt.Errorf("logging: create log dir %q: %w", dir, err)
+			}
+		}
+		f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+		if err != nil {
+			return fmt.Errorf("logging: open log file %q: %w", path, err)
+		}
+		newFile = f
 	}
 
 	mu.Lock()
 	defer mu.Unlock()
 
+	if logFile != nil {
+		_ = logFile.Close()
+		logFile = nil
+	}
+	fileOut = nil
+	if newFile != nil {
+		logFile = newFile
+		fileOut = newFile
+	}
+
 	globalLevel = lvl
+	useColor = colorOn
 	timestamps = s.Timestamps
 	components["nas"] = s.Nas
 	components["profile"] = s.Profile
+	components["gpsp"] = s.Gpsp
 	components["qr"] = s.Qr
 	components["browser"] = s.Browser
 	components["natneg"] = s.Natneg
@@ -110,6 +144,18 @@ func Init(s Settings) error {
 	components["app"] = s.App
 
 	return nil
+}
+
+// SetOutputForTest redirects console log output. Pass nil to restore stderr.
+// Does not change an optional LogFile mirror. Intended for tests only.
+func SetOutputForTest(w io.Writer) {
+	mu.Lock()
+	defer mu.Unlock()
+	if w == nil {
+		out = os.Stderr
+		return
+	}
+	out = w
 }
 
 // For returns a Logger for the named component.
@@ -148,15 +194,32 @@ func (l *Logger) log(lvl level, format string, args ...any) {
 	minLevel := globalLevel
 	ts := timestamps
 	color := useColor
+	w := out
+	fw := fileOut
 	mu.Unlock()
 
 	if lvl < minLevel {
 		return
 	}
 
-	tag := levelTag[lvl]
-	comp := padRight(l.component, 8)
 	msg := fmt.Sprintf(format, args...)
+	plain := formatLine(lvl, l.component, msg, ts, false)
+	console := plain
+	if color {
+		console = formatLine(lvl, l.component, msg, ts, true)
+	}
+
+	mu.Lock()
+	_, _ = io.WriteString(w, console)
+	if fw != nil {
+		_, _ = io.WriteString(fw, plain)
+	}
+	mu.Unlock()
+}
+
+func formatLine(lvl level, component, msg string, ts, color bool) string {
+	tag := levelTag[lvl]
+	comp := padRight(component, 8)
 
 	var b strings.Builder
 	if ts {
@@ -182,10 +245,7 @@ func (l *Logger) log(lvl level, format string, args ...any) {
 	b.WriteByte(' ')
 	b.WriteString(msg)
 	b.WriteByte('\n')
-
-	mu.Lock()
-	_, _ = io.WriteString(out, b.String())
-	mu.Unlock()
+	return b.String()
 }
 
 func parseLevel(s string) (level, error) {

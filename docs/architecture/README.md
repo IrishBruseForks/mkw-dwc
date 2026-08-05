@@ -169,8 +169,10 @@ hostname returned during NAS service location (default
 ### `internal/logging`
 
 Central logger. `Init()` runs once from `[Logging]`. Packages call
-`logging.For("component")` with names like `nas`, `profile`, `qr`, `browser`,
-`natneg`, `proxy`, `app`.
+`logging.For("component")` with names like `nas`, `profile`, `gpsp`, `qr`,
+`browser`, `natneg`, `proxy`, `app`. Optional `LogFile` mirrors those lines to a
+plain-text file (stderr still gets color when enabled). Optional `DumpFile`
+writes verbose raw NAS/proxy TCP dumps to a separate file via `internal/httpfix`.
 
 ### Packages at a glance
 
@@ -178,6 +180,7 @@ Central logger. `Init()` runs once from `[Logging]`. Packages call
 |---------|-----|-------|
 | `internal/nas` | [NAS](nas.md) | HTTP auth on `:9000` (`/`, `/ac`, `/pr`). Retail needs NoSSL |
 | `internal/proxy` | [Proxy](proxy.md) | Optional `--proxy-bind` (usually `:80`) |
+| `internal/httpfix` | [Proxy](proxy.md) | Duplicate Host strip + optional raw dumps |
 | `internal/database` | [Database](database.md) | `[Store]` JSON account files |
 | `internal/backend` | [Backend](backend.md) | In-memory rooms + NATNEG, plus filter expressions |
 | `internal/gamespy/profile` | [Profile](profile.md) | TCP `:29900` |

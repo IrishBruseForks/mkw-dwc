@@ -2,6 +2,8 @@ package logging
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -17,6 +19,11 @@ func resetForTest() {
 		components[k] = true
 	}
 	out = &bytes.Buffer{}
+	if logFile != nil {
+		_ = logFile.Close()
+		logFile = nil
+	}
+	fileOut = nil
 }
 
 func captureOutput(t *testing.T, fn func()) string {
@@ -128,4 +135,42 @@ func TestConcurrentLogging(t *testing.T) {
 		}()
 	}
 	wg.Wait()
+}
+
+func TestLogFileMirrorsConsole(t *testing.T) {
+	resetForTest()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "nested", "app.log")
+
+	if err := Init(Settings{
+		Level:      "info",
+		Color:      "never",
+		Timestamps: false,
+		App:        true,
+		LogFile:    path,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = Init(Settings{Level: "info", Color: "never"}) })
+
+	For("app").Infof("mirrored line")
+
+	console, ok := out.(*bytes.Buffer)
+	if !ok {
+		t.Fatal("expected bytes.Buffer console output")
+	}
+	if !strings.Contains(console.String(), "mirrored line") {
+		t.Fatalf("console missing line: %q", console.String())
+	}
+
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), "mirrored line") {
+		t.Fatalf("log file missing line: %q", body)
+	}
+	if strings.Contains(string(body), "\033") {
+		t.Fatalf("log file should be plain text, got %q", body)
+	}
 }

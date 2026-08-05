@@ -103,6 +103,7 @@ func (c *Config) LoggingSettings() (logging.Settings, error) {
 		Timestamps: true,
 		Nas:        true,
 		Profile:    true,
+		Gpsp:       true,
 		Qr:         true,
 		Browser:    true,
 		Natneg:     true,
@@ -143,6 +144,9 @@ func (c *Config) LoggingSettings() (logging.Settings, error) {
 	if s.Profile, err = parseLoggingBool(sec, "Profile", true); err != nil {
 		return logging.Settings{}, err
 	}
+	if s.Gpsp, err = parseLoggingBool(sec, "Gpsp", true); err != nil {
+		return logging.Settings{}, err
+	}
 	if s.Qr, err = parseLoggingBool(sec, "Qr", true); err != nil {
 		return logging.Settings{}, err
 	}
@@ -157,6 +161,12 @@ func (c *Config) LoggingSettings() (logging.Settings, error) {
 	}
 	if s.App, err = parseLoggingBool(sec, "App", true); err != nil {
 		return logging.Settings{}, err
+	}
+	if v, ok := sec["LogFile"]; ok {
+		s.LogFile = strings.TrimSpace(v)
+	}
+	if v, ok := sec["DumpFile"]; ok {
+		s.DumpFile = strings.TrimSpace(v)
 	}
 
 	return s, nil
