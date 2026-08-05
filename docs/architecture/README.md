@@ -24,6 +24,10 @@ an auth token and where the other services live.
 Prove the NAS auth token and open a GameSpy session (profile ID, session
 key). Matchmaking expects this login.
 
+### GPSP (Player Search)
+Resolve friend profile IDs to nicks during WFC connect. Needed so
+"Connecting to Nintendo WFC..." can finish, even with an empty friend list.
+
 ### QR
 Room hosts send UDP heartbeats so the server knows which rooms are live.
 That list is kept in memory.
@@ -52,6 +56,7 @@ flowchart TB
         Proxy[Proxy :80 optional]
         NAS[NAS :9000]
         Profile[Profile :29900]
+        GPSP[GPSP :29901]
     end
 
     subgraph match [2. Find a room]
@@ -68,12 +73,14 @@ flowchart TB
 
     Wii --> Proxy --> NAS
     Wii --> Profile
+    Wii --> GPSP
     Wii --> QR
     Wii --> Browser
     Wii --> NatNeg
 
     NAS --> Store
     Profile --> Store
+    GPSP --> Store
     QR --> Board
     Browser --> Board
     Browser -.->|relay join to host| QR
@@ -91,6 +98,7 @@ Nintendo and GameSpy used dense names. Here is the short version:
 | **Authtoken** | Short-lived token NAS gives the Wii after login |
 | **GameSpy** | Third-party stack Nintendo used for profiles and matchmaking |
 | **GPCM / Profile** | GameSpy profile login after NAS |
+| **GPSP** | GameSpy player search. Friend ID to nick lookup during WFC connect |
 | **QR / Master** | Query and Reporting. Hosts advertise rooms here |
 | **Server Browser** | Clients search and join rooms here |
 | **NAT / NATNEG** | Helps two devices behind routers find each other (hole punching) |
@@ -106,6 +114,7 @@ Nintendo and GameSpy used dense names. Here is the short version:
 | NAS | [nas.md](nas.md) | 9000 | TCP HTTP | Account create / login / service location |
 | Proxy | [proxy.md](proxy.md) | 80 (optional) | TCP HTTP | Forward Nintendo NAS hostnames to NAS |
 | Profile | [profile.md](profile.md) | 29900 | TCP | Prove NAS token, open GameSpy session |
+| GPSP | [gpsp.md](gpsp.md) | 29901 | TCP | Friend profile lookup (`otherslist`) |
 | QR / Master | [qr.md](qr.md) | 27900 | UDP | Hosts advertise rooms (heartbeats) |
 | Server Browser | [browser.md](browser.md) | 28910 | TCP | Clients search and join rooms |
 | NAT Negotiation | [natneg.md](natneg.md) | 27901 | UDP | Help two players connect through NAT |
@@ -123,9 +132,10 @@ Nintendo and GameSpy used dense names. Here is the short version:
 2. **Proxy** (if enabled) forwards NAS hostnames to **NAS** on :9000
 3. **NAS** creates the account / issues an auth token, returns GameSpy hostnames
 4. **Profile** handles GameSpy login and writes a session into the **account store**
-5. Host sends **QR** heartbeats, which fill the **backend** room list
-6. Clients query the **browser** for rooms (reads the backend)
-7. On join, the **browser** relays via **QR**, then **NATNEG** sets up P2P
+5. **GPSP** answers `otherslist` so WFC connect can finish (empty friends still query)
+6. Host sends **QR** heartbeats, which fill the **backend** room list
+7. Clients query the **browser** for rooms (reads the backend)
+8. On join, the **browser** relays via **QR**, then **NATNEG** sets up P2P
 
 For hosting and DNS, see [Setup](../setup.md).
 
@@ -143,7 +153,7 @@ only need to run a server.
 3. Initializes logging from optional `[Logging]` via `internal/logging`
 4. Opens the account store from `[Store]` Type/Path
 5. Creates the shared `backend.Backend`
-6. Starts five (or six) services concurrently
+6. Starts six (or seven) services concurrently
 7. Shuts down on SIGINT/SIGTERM
 
 The QR server is passed into the browser as a **relay**, so the browser can
@@ -160,6 +170,7 @@ Loads `mkw-dwc.ini`, an INI file with one section per service:
 | `GameSpyNatNegServer` | 27901 | UDP |
 | `GameSpyServerBrowserServer` | 28910 | TCP |
 | `GameSpyProfileServer` | 29900 | TCP |
+| `GameSpyPlayerSearchServer` | 29901 | TCP |
 
 `BindAddr()` reads `IP` and `Port` from each section. `NasSvcHost()` is the
 hostname returned during NAS service location (default
@@ -184,6 +195,7 @@ writes verbose raw NAS/proxy TCP dumps to a separate file via `internal/httpfix`
 | `internal/database` | [Database](database.md) | `[Store]` JSON account files |
 | `internal/backend` | [Backend](backend.md) | In-memory rooms + NATNEG, plus filter expressions |
 | `internal/gamespy/profile` | [Profile](profile.md) | TCP `:29900` |
+| `internal/gamespy/gpsp` | [GPSP](gpsp.md) | TCP `:29901` |
 | `internal/gamespy/qr` | [QR](qr.md) | UDP `:27900` |
 | `internal/gamespy/browser` | [Browser](browser.md) | TCP `:28910` |
 | `internal/gamespy/natneg` | [NATNEG](natneg.md) | UDP `:27901` |
@@ -202,7 +214,7 @@ Shared GameSpy helpers in `internal/gamespy/`:
 ```
 main.go             Main entrypoint
 internal/nas/       Nintendo NAS HTTP server
-internal/gamespy/   GameSpy QR, browser, profile, NATNEG
+internal/gamespy/   GameSpy QR, browser, profile, GPSP, NATNEG
 internal/proxy/     Optional NAS reverse proxy
 internal/database/  Account store interface + JSON implementation
 internal/config/    mkw-dwc.ini loader

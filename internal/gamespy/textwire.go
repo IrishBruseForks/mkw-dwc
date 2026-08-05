@@ -86,6 +86,26 @@ func CreateGameSpyMessage(fields map[string]string) []byte {
 	return buf
 }
 
+// KV is an ordered GameSpy wire field.
+type KV struct {
+	Key   string
+	Value string
+}
+
+// CreateGameSpyMessageOrdered builds \key\value...\\final\ in pair order.
+// Callers should put the command as the first pair (key = command name, value often empty).
+func CreateGameSpyMessageOrdered(pairs []KV) []byte {
+	var buf []byte
+	for _, pair := range pairs {
+		buf = append(buf, '\\')
+		buf = append(buf, stripBackslash(pair.Key)...)
+		buf = append(buf, '\\')
+		buf = append(buf, stripBackslash(pair.Value)...)
+	}
+	buf = append(buf, "\\final\\"...)
+	return buf
+}
+
 func stripBackslash(s string) string {
 	return stringsTrimBackslash(s)
 }

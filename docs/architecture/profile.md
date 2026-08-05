@@ -59,4 +59,5 @@ Unknown commands are logged and ignored.
 
 - [NAS](nas.md) - issues the authtoken used here
 - [Database](database.md) - users and sessions
+- [GPSP](gpsp.md) - friend lookup during WFC connect (right after profile login)
 - [QR](qr.md) / [Browser](browser.md) - used after a successful profile login

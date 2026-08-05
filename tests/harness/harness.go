@@ -15,6 +15,7 @@ import (
 	"github.com/IrishBruse/mkw-dwc/internal/config"
 	"github.com/IrishBruse/mkw-dwc/internal/gamespy"
 	"github.com/IrishBruse/mkw-dwc/internal/gamespy/browser"
+	"github.com/IrishBruse/mkw-dwc/internal/gamespy/gpsp"
 	"github.com/IrishBruse/mkw-dwc/internal/gamespy/natneg"
 	"github.com/IrishBruse/mkw-dwc/internal/gamespy/profile"
 	"github.com/IrishBruse/mkw-dwc/internal/gamespy/qr"
@@ -33,11 +34,12 @@ type Env struct {
 	QRPort      int
 	BrowserPort int
 	NatNegPort  int
+	GPSPPort    int
 
 	cancel context.CancelFunc
 }
 
-// Start boots NAS, profile, QR, browser, and NATNEG on ephemeral ports.
+// Start boots NAS, profile, QR, browser, NATNEG, and GPSP on ephemeral ports.
 func Start(t *testing.T, gpcm database.Store) *Env {
 	t.Helper()
 
@@ -53,6 +55,7 @@ func Start(t *testing.T, gpcm database.Store) *Env {
 		QRPort:      FreeUDPPort(t),
 		BrowserPort: FreeTCPPort(t),
 		NatNegPort:  FreeUDPPort(t),
+		GPSPPort:    FreeTCPPort(t),
 	}
 
 	qrSrv := qr.New(fmt.Sprintf(":%d", env.QRPort), be, keys)
@@ -64,20 +67,27 @@ func Start(t *testing.T, gpcm database.Store) *Env {
 		Addr:    fmt.Sprintf(":%d", env.NASPort),
 	}
 	profileSrv := &profile.Server{DB: gpcm, Addr: fmt.Sprintf(":%d", env.ProfilePort)}
+	gpspSrv := &gpsp.Server{DB: gpcm, Addr: fmt.Sprintf(":%d", env.GPSPPort)}
 	natnegSrv := natneg.New(fmt.Sprintf(":%d", env.NatNegPort), be)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	env.cancel = cancel
-	t.Cleanup(cancel)
+	t.Cleanup(func() {
+		cancel()
+		// Let listeners finish closing before TempDir cleanup.
+		time.Sleep(100 * time.Millisecond)
+	})
 
 	go nasSrv.Serve(ctx)
 	go profileSrv.Serve(ctx)
+	go gpspSrv.Serve(ctx)
 	go qrSrv.Serve(ctx)
 	go browserSrv.Serve(ctx)
 	go natnegSrv.Serve(ctx)
 
 	WaitTCP(env.NASPort, 3*time.Second)
 	WaitTCP(env.ProfilePort, 3*time.Second)
+	WaitTCP(env.GPSPPort, 3*time.Second)
 	time.Sleep(150 * time.Millisecond)
 
 	return env
@@ -111,6 +121,11 @@ func (e *Env) BrowserAddr() string {
 // NatNegAddr returns the NATNEG UDP dial address.
 func (e *Env) NatNegAddr() string {
 	return fmt.Sprintf("127.0.0.1:%d", e.NatNegPort)
+}
+
+// GPSPAddr returns the GPSP TCP dial address.
+func (e *Env) GPSPAddr() string {
+	return fmt.Sprintf("127.0.0.1:%d", e.GPSPPort)
 }
 
 // LoadConfig loads mkw-dwc.ini from the module root.

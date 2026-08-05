@@ -14,6 +14,7 @@ No Python service farm, no external database, no cluster to babysit.
 | Account login | NAS HTTP auth (`/ac`, `/pr`) |
 | Optional NAS proxy | `--proxy-bind` for Nintendo NAS hostnames on port 80 |
 | GameSpy login | Profile server (GPCM) |
+| Friend lookup | GPSP player search (`otherslist`) |
 | Room advertise / search | QR (UDP) + server browser (TCP) |
 | NAT punch-through | NAT negotiation (UDP) |
 | Player data | JSON account store via `[Store]` in `mkw-dwc.ini` |
@@ -81,6 +82,7 @@ Defaults from `mkw-dwc.ini` (and `--proxy-bind`):
 | NAT negotiation | 27901 | UDP |
 | Server browser | 28910 | TCP |
 | Profile | 29900 | TCP |
+| GPSP (player search) | 29901 | TCP |
 
 Skip `--proxy-bind` and expose NAS yourself? Open `9000/tcp` as well.
 

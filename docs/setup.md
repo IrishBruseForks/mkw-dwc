@@ -40,6 +40,7 @@ sudo ufw allow 27900/udp
 sudo ufw allow 27901/udp
 sudo ufw allow 28910/tcp
 sudo ufw allow 29900/tcp
+sudo ufw allow 29901/tcp
 ```
 
 Most online play also needs a wide UDP range:
@@ -113,6 +114,10 @@ Port = 28910 # TCP listen port
 IP = 0.0.0.0 # bind address
 Port = 29900 # TCP listen port
 
+[GameSpyPlayerSearchServer]
+IP = 0.0.0.0 # bind address
+Port = 29901 # TCP listen port
+
 [Store]
 Type = "json" # "json"
 Path = "data" # JSON data directory
@@ -170,6 +175,7 @@ Skip dnsmasq. Point these names at your server IP (example `192.168.1.100`):
 192.168.1.100 mariokartwii.natneg2.gs.nintendowifi.net
 192.168.1.100 mariokartwii.natneg3.gs.nintendowifi.net
 192.168.1.100 gpcm.gs.nintendowifi.net
+192.168.1.100 gpsp.gs.nintendowifi.net
 ```
 
 - Windows: `C:\Windows\System32\drivers\etc\hosts` (edit as Administrator)
@@ -191,6 +197,7 @@ INFO  app     store: type=json path=data
 INFO  app     logging: level=debug color=auto timestamps=false log_file="logs/mkw-dwc.log" dump_file="logs/http-traffic.log"
 INFO  app     nas: :9000
 INFO  app     profile: :29900
+INFO  app     gpsp: :29901
 INFO  app     qr: :27900
 INFO  app     browser: :28910
 INFO  app     natneg: :27901

@@ -16,6 +16,7 @@ import (
 	dbjson "github.com/IrishBruse/mkw-dwc/internal/database/json"
 	"github.com/IrishBruse/mkw-dwc/internal/gamespy"
 	"github.com/IrishBruse/mkw-dwc/internal/gamespy/browser"
+	"github.com/IrishBruse/mkw-dwc/internal/gamespy/gpsp"
 	"github.com/IrishBruse/mkw-dwc/internal/gamespy/natneg"
 	"github.com/IrishBruse/mkw-dwc/internal/gamespy/profile"
 	"github.com/IrishBruse/mkw-dwc/internal/gamespy/qr"
@@ -81,6 +82,11 @@ func Run() {
 		log.Fatalf("profile bind: %v", err)
 	}
 
+	gpspHost, gpspPort, err := cfg.BindAddr("GameSpyPlayerSearchServer")
+	if err != nil {
+		log.Fatalf("gpsp bind: %v", err)
+	}
+
 	qrHost, qrPort, err := cfg.BindAddr("GameSpyQRServer")
 	if err != nil {
 		log.Fatalf("qr bind: %v", err)
@@ -100,6 +106,7 @@ func Run() {
 	log.Infof("logging: level=%s color=%s timestamps=%t log_file=%q dump_file=%q", logCfg.Level, logCfg.Color, logCfg.Timestamps, logCfg.LogFile, logCfg.DumpFile)
 	log.Infof("nas: %s", formatListenAddr(nasHost, nasPort))
 	log.Infof("profile: %s", formatListenAddr(profileHost, profilePort))
+	log.Infof("gpsp: %s", formatListenAddr(gpspHost, gpspPort))
 	log.Infof("qr: %s", formatListenAddr(qrHost, qrPort))
 	log.Infof("browser: %s", formatListenAddr(browserHost, browserPort))
 	log.Infof("natneg: %s", formatListenAddr(natnegHost, natnegPort))
@@ -120,6 +127,10 @@ func Run() {
 		DB:   gpcm,
 		Addr: formatListenAddr(profileHost, profilePort),
 	}
+	gpspServer := &gpsp.Server{
+		DB:   gpcm,
+		Addr: formatListenAddr(gpspHost, gpspPort),
+	}
 	natnegServer := natneg.New(formatListenAddr(natnegHost, natnegPort), be)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -133,6 +144,7 @@ func Run() {
 	services := []service{
 		{name: "nas", run: nasServer.Serve},
 		{name: "profile", run: profileServer.Serve},
+		{name: "gpsp", run: gpspServer.Serve},
 		{name: "qr", run: qrServer.Serve},
 		{name: "browser", run: browserServer.Serve},
 		{name: "natneg", run: natnegServer.Serve},
