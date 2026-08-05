@@ -19,6 +19,11 @@ func WriteU16LE(b []byte, val uint16) {
 	binary.LittleEndian.PutUint16(b, val)
 }
 
+// WriteU16BE writes val as big-endian uint16 into b.
+func WriteU16BE(b []byte, val uint16) {
+	binary.BigEndian.PutUint16(b, val)
+}
+
 // ReadCString reads a NUL-terminated string from b starting at off.
 // It returns the string (without the NUL) and nextOffset, the index immediately after the NUL.
 // If no NUL terminator is found, it returns ("", -1).

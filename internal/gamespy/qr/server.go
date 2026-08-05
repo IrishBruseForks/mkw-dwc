@@ -200,6 +200,8 @@ func (s *Server) handlePacket(recvData []byte, addr net.UDPAddr) {
 		s.handleChallengeResponse(sessionID, recvData, addr)
 	case 0x03:
 		s.handleHeartbeat(sessionID, sessionIDRaw, recvData, addr)
+	case 0x07:
+		// Client message ack for FE FD 06 (Python logs at DEBUG only).
 	case 0x08:
 		// keepalive refresh already applied above
 	case 0x09:
@@ -229,10 +231,7 @@ func (s *Server) handleChallengeResponse(sessionID uint32, recvData []byte, addr
 	heartbeatData := sess.heartbeatData
 	s.mu.Unlock()
 
-	clientChallenge := string(recvData[5:])
-	if len(clientChallenge) > 0 && clientChallenge[len(clientChallenge)-1] == 0 {
-		clientChallenge = clientChallenge[:len(clientChallenge)-1]
-	}
+	clientChallenge := string(recvData[5 : len(recvData)-1])
 
 	expected := gamespy.PrepareRC4Base64(secretkey, challenge)
 	if clientChallenge != expected {
@@ -293,6 +292,19 @@ func (s *Server) handleHeartbeat(sessionID uint32, sessionIDRaw []byte, recvData
 
 	if publicip, ok := k["publicip"]; ok && publicip == "0" {
 		k["publicip"] = gamespy.SignedIPString(addr.IP, sess.console)
+	}
+
+	// Dolphin always reports localip0=10.0.1.30. That address is not a real
+	// local interface. When the server and clients share a public IP (typical
+	// loopback /etc/hosts setup), MKWii skips NATNEG and tries LAN connect via
+	// localip0, which never works for two Dolphin instances. Rewrite to the
+	// real UDP source IP so same-machine clients can reach each other.
+	if localip0, ok := k["localip0"]; ok && localip0 == "10.0.1.30" {
+		if ip4 := addr.IP.To4(); ip4 != nil {
+			fixed := ip4.String()
+			logging.For("qr").Infof("dolphin localip0 rewrite session=%08x %s -> %s", sessionID, localip0, fixed)
+			k["localip0"] = fixed
+		}
 	}
 
 	if publicport, ok := k["publicport"]; ok {
@@ -380,7 +392,20 @@ func (s *Server) updateServerList(sessionID uint32, k map[string]string) {
 	s.mu.Unlock()
 
 	_ = s.Backend.UpdateServerList(gamename, sessionID, k, console)
-	logging.For("qr").Infof("room registered gamename=%s session=%08x", gamename, sessionID)
+	logging.For("qr").Infof(
+		"room registered gamename=%s session=%08x dwc_pid=%s hoststate=%s mtype=%s suspend=%s rk=%s ev=%s publicip=%s publicport=%s numplayers=%s",
+		gamename,
+		sessionID,
+		k["dwc_pid"],
+		k["dwc_hoststate"],
+		k["dwc_mtype"],
+		k["dwc_suspend"],
+		k["rk"],
+		k["ev"],
+		k["publicip"],
+		k["publicport"],
+		k["numplayers"],
+	)
 
 	s.mu.Lock()
 	if sess, ok := s.sessions[sessionID]; ok {

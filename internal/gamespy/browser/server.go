@@ -216,18 +216,24 @@ func (sess *connSession) handleServerList(packet []byte) {
 	if idx+4 > len(packet) {
 		return
 	}
-	options := binary.LittleEndian.Uint32(packet[idx : idx+4])
+	// Options are big-endian (Python reference: get_int(..., True)).
+	options := binary.BigEndian.Uint32(packet[idx : idx+4])
 	idx += 4
 
 	maxServers := 0
 	sendIP := false
-	if options&optLimitResultCount != 0 {
+	// Match Python's if/elif chain: only one of these option payloads applies.
+	switch {
+	case options&optLimitResultCount != 0:
 		if idx+4 <= len(packet) {
 			maxServers = int(binary.LittleEndian.Uint32(packet[idx : idx+4]))
 			idx += 4
 		}
-	}
-	if options&optNoServerList != 0 {
+	case options&optAlternateSourceIP != 0:
+		if idx+4 <= len(packet) {
+			idx += 4
+		}
+	case options&optNoServerList != 0:
 		sendIP = true
 	}
 
@@ -248,7 +254,7 @@ func (sess *connSession) handleServerList(packet []byte) {
 		return
 	}
 
-	logging.For("browser").Infof("server list query from %s game=%q filter=%q fields=%d", sess.conn.RemoteAddr(), queryGame, filter, len(fields))
+	logging.For("browser").Infof("server list query from %s game=%q filter=%q fields=%v max=%d", sess.conn.RemoteAddr(), queryGame, filter, fields, maxServers)
 	sess.findServer(queryGame, filter, fields, maxServers, gameName, challenge)
 }
 
@@ -280,6 +286,22 @@ func (sess *connSession) findServer(queryGame, filter string, fields []string, m
 		return
 	}
 	logging.For("browser").Infof("returning %d room(s) for game=%q", len(results), queryGame)
+	for i, result := range results {
+		fm := result.Record.AsMap()
+		logging.For("browser").Infof(
+			"  room[%d] session=%08x dwc_pid=%s hoststate=%s mtype=%s suspend=%s rk=%s ev=%s publicip=%s requested=%v",
+			i,
+			result.Record.SessionID,
+			fm["dwc_pid"],
+			fm["dwc_hoststate"],
+			fm["dwc_mtype"],
+			fm["dwc_suspend"],
+			fm["rk"],
+			fm["ev"],
+			result.Record.PublicIP,
+			result.Requested,
+		)
+	}
 	if len(results) == 0 {
 		results = []backend.ServerResult{{}}
 	}
@@ -288,8 +310,11 @@ func (sess *connSession) findServer(queryGame, filter string, fields []string, m
 
 	for _, result := range results {
 		server := result
-		if len(fields) > 0 && len(server.Requested) > 0 && requestedEmpty(server.Requested) {
+		if shouldDropRequestedRoom(fields, server.Requested) {
+			logging.For("browser").Warnf("dropping room session=%08x: requested fields missing", result.Record.SessionID)
 			server = backend.ServerResult{}
+		} else if server.Record.SessionID != 0 || server.Record.PublicIP != "" {
+			sess.console = server.Record.Console
 		}
 
 		data = append(data, generateServerEntry(fields, server, server.Record.Console)...)
@@ -321,10 +346,12 @@ func (sess *connSession) generateServerListHeader(fields []string) []byte {
 
 	out := make([]byte, 0, 64+len(fields)*16)
 	out = append(out, ip[0], ip[1], ip[2], ip[3])
+	// Client TCP port is big-endian (Python: get_bytes_from_short(port, True)).
 	portBuf := make([]byte, 2)
-	gamespy.WriteU16LE(portBuf, uint16(port))
+	gamespy.WriteU16BE(portBuf, uint16(port))
 	out = append(out, portBuf...)
 
+	// Field count is little-endian (Python: get_bytes_from_short(key_count)).
 	keyCount := make([]byte, 2)
 	gamespy.WriteU16LE(keyCount, uint16(len(fields)))
 	out = append(out, keyCount...)
@@ -361,7 +388,8 @@ func generateServerEntry(fields []string, result backend.ServerResult, console i
 	}
 	portNum, _ := strconv.Atoi(port)
 	portBuf := make([]byte, 2)
-	gamespy.WriteU16LE(portBuf, uint16(portNum))
+	// Public/local ports in list entries are big-endian (Python: True).
+	gamespy.WriteU16BE(portBuf, uint16(portNum))
 	flagsBuf = append(flagsBuf, portBuf...)
 
 	if rec.LocalIP0 != "" {
@@ -374,7 +402,7 @@ func generateServerEntry(fields []string, result backend.ServerResult, console i
 		flags |= nonstandardPrivatePortFlag
 		localPort, _ := strconv.Atoi(rec.LocalPort)
 		lpBuf := make([]byte, 2)
-		gamespy.WriteU16LE(lpBuf, uint16(localPort))
+		gamespy.WriteU16BE(lpBuf, uint16(localPort))
 		flagsBuf = append(flagsBuf, lpBuf...)
 	}
 
@@ -407,12 +435,15 @@ func (sess *connSession) sendEncrypted(gameName, challenge string, data []byte) 
 func (sess *connSession) handleSendMessage(packet []byte) {
 	packetLen := int(gamespy.ReadU16BE(packet))
 	if packetLen != len(packet) || len(packet) < 9 {
+		logging.For("browser").Warnf("send message bad length from %s: header=%d actual=%d", sess.conn.RemoteAddr(), packetLen, len(packet))
 		return
 	}
 
 	destIP := net.IPv4(packet[3], packet[4], packet[5], packet[6])
 	destPort := int(binary.BigEndian.Uint16(packet[7:9]))
 	payload := packet[9:]
+
+	logging.For("browser").Infof("send message from %s -> %s:%d payload=%d bytes", sess.conn.RemoteAddr(), destIP.String(), destPort, len(payload))
 
 	destAddr := net.UDPAddr{IP: destIP, Port: destPort}
 	sess.forwardToClient(payload, destAddr)
@@ -425,7 +456,7 @@ func (sess *connSession) forwardToClient(data []byte, forwardClient net.UDPAddr)
 		return
 	}
 
-	if server.PublicIP != ip || server.PublicPort != strconv.Itoa(forwardClient.Port) {
+	if !gamespy.MatchPublicIP(server.PublicIP, ip) || server.PublicPort != strconv.Itoa(forwardClient.Port) {
 		logging.For("browser").Warnf("forwardToClient: IP mismatch for %s (public=%s/%s)", forwardClient.String(), server.PublicIP, server.PublicPort)
 		return
 	}
@@ -443,6 +474,7 @@ func (sess *connSession) forwardToClient(data []byte, forwardClient net.UDPAddr)
 
 	if len(data) == 10 && len(data) >= 6 && bytes.Equal(data[:6], natnegMagic) {
 		natnegSession := int32(binary.LittleEndian.Uint32(data[6:10]))
+		logging.For("browser").Infof("natneg cookie session=%d for %s own=%v", natnegSession, forwardClient.String(), sess.ownServer != nil)
 		sess.server.Backend.AddNatnegServer(uint32(natnegSession), server.AsMap())
 		if sess.ownServer != nil {
 			sess.server.Backend.AddNatnegServer(uint32(natnegSession), sess.ownServer.AsMap())
@@ -471,28 +503,30 @@ func (sess *connSession) trackOwnServer(data []byte) {
 }
 
 func (sess *connSession) findServerWithConsoleFallback(dottedIP string, port int) (*backend.ServerRecord, string) {
-	rec := sess.server.Backend.FindServerByAddress(dottedIP, port, "")
-	if rec != nil {
-		return rec, rec.PublicIP
-	}
 	ip := net.ParseIP(dottedIP)
-	for _, console := range []int{0, 1} {
-		ipStr := gamespy.SignedIPString(ip, console)
-		rec = sess.server.Backend.FindServerByAddress(ipStr, port, "")
-		if rec != nil {
-			return rec, ipStr
+	if ip == nil {
+		return nil, ""
+	}
+
+	first := sess.console
+	if first != 0 && first != 1 {
+		first = 0
+	}
+	for _, console := range []int{first, 1 - first} {
+		signedIP := gamespy.SignedIPString(ip, console)
+		if rec := sess.server.Backend.FindServerByAddress(signedIP, port, ""); rec != nil {
+			return rec, signedIP
 		}
+	}
+
+	if rec := sess.server.Backend.FindServerByAddress(dottedIP, port, ""); rec != nil {
+		return rec, rec.PublicIP
 	}
 	return nil, ""
 }
 
-func requestedEmpty(requested map[string]string) bool {
-	for _, v := range requested {
-		if v != "" {
-			return false
-		}
-	}
-	return true
+func shouldDropRequestedRoom(fields []string, requested map[string]string) bool {
+	return len(fields) > 0 && requested != nil && len(requested) == 0
 }
 
 func isOnlySpace(s string) bool {
