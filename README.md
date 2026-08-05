@@ -88,6 +88,7 @@ Skip `--proxy-bind` and expose NAS yourself? Open `9000/tcp` as well.
 
 ## Docs
 
+- [Local testing with Dolphin](docs/local-testing.md) - Linux + Flatpak Dolphin, step by step
 - [Setup tutorial](docs/setup.md) - LAN / VPS hosting, DNS, Wii client, troubleshooting
 - [Architecture](docs/architecture/README.md) - how online play works, glossary, per-service detail
 

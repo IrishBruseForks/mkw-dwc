@@ -3,4 +3,5 @@ gpcm.db
 testdata/
 /data/
 /mkw-dwc
+/tmp/
 /logs/

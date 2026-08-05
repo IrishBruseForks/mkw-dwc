@@ -163,6 +163,9 @@ sudo service dnsmasq restart
 
 ### Dolphin / single PC: hosts file
 
+For a focused Dolphin-on-your-PC walkthrough (loopback hosts, NoSSL, health
+checks), see [Local testing with Dolphin](local-testing.md).
+
 Skip dnsmasq. Point these names at your server IP (example `192.168.1.100`):
 
 ```
@@ -246,10 +249,15 @@ Heavy log output on first connect is normal. Keep-alives afterward are normal to
 ### Dolphin
 
 - Same hosts entries or DNS as above
-- NoSSL Gecko code (NAS must be HTTP, not HTTPS)
+- NoSSL Gecko code **and** Dolphin **Enable Cheats** (NAS must be HTTP, not HTTPS)
 - Clean rip and fresh license
 
-Retail MKWii builds `https://` NAS URLs. This server speaks plain HTTP. Without NoSSL (or an equivalent Gecko hook), you get SSL/connection errors even when `mkw-dwc` is up.
+Retail MKWii builds `https://` NAS URLs. This server speaks plain HTTP. Without
+NoSSL (or an equivalent Gecko hook), you get SSL/connection errors even when
+`mkw-dwc` is up. Checking the Gecko code alone is not enough: if **Enable
+Cheats** is off in Dolphin Config -> General, NoSSL never runs and MKWii often
+shows **error 20100**. For the full Flatpak walkthrough (including
+`scripts/local.js dolphin`), see [Local testing with Dolphin](local-testing.md).
 
 ---
 
@@ -322,7 +330,8 @@ usually yields EC 84010 or 91010.
 
 ### MKWii error codes
 
-- **20100** - dirty ISO, NoSSL missing, wrong Wii DNS, or very bad network
+- **20100** - dirty ISO, NoSSL missing, Dolphin cheats disabled (NoSSL not
+  actually running), wrong Wii DNS, or very bad network
 - **234XX** - SSL/proxy mismatch, or NAS HTTP rejected (duplicate `Host`
   headers from MKW/Dolphin used to 400 in Go). Enable NoSSL, use
   `--proxy-bind :80`, and run a build that strips duplicate Host headers
