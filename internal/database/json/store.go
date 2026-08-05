@@ -147,6 +147,12 @@ func (s *Store) StoreNasLogin(userid, authtoken string, data map[string]string) 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	for _, login := range s.nasLogins {
+		if login.AuthToken == authtoken && login.UserID != userid {
+			return fmt.Errorf("json: authtoken collision")
+		}
+	}
+
 	for i := range s.nasLogins {
 		if s.nasLogins[i].UserID == userid {
 			s.nasLogins[i].AuthToken = authtoken
@@ -177,6 +183,69 @@ func (s *Store) GetNasLogin(authtoken string) (map[string]string, error) {
 		}
 	}
 	return nil, nil
+}
+
+// GetProfile returns public profile fields for profileID.
+func (s *Store) GetProfile(profileID int64) (*database.Profile, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for _, u := range s.users {
+		if u.ProfileID != profileID {
+			continue
+		}
+		return &database.Profile{
+			ProfileID:  u.ProfileID,
+			UserID:     u.UserID,
+			Email:      u.Email,
+			Uniquenick: u.Uniquenick,
+			PID:        u.PID,
+			Lon:        u.Lon,
+			Lat:        u.Lat,
+			Loc:        u.Loc,
+			Firstname:  u.Firstname,
+			Lastname:   u.Lastname,
+		}, nil
+	}
+	return nil, fmt.Errorf("json: profile %d not found", profileID)
+}
+
+// UpdateProfile applies allowed field updates to profileID.
+func (s *Store) UpdateProfile(profileID int64, fields map[string]string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	idx := -1
+	for i, u := range s.users {
+		if u.ProfileID == profileID {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		return fmt.Errorf("json: profile %d not found", profileID)
+	}
+
+	u := &s.users[idx]
+	for key, value := range fields {
+		switch key {
+		case "firstname":
+			u.Firstname = value
+		case "lastname":
+			u.Lastname = value
+		case "lon":
+			u.Lon = value
+		case "lat":
+			u.Lat = value
+		case "loc":
+			u.Loc = value
+		case "zipcode":
+			u.Zipcode = value
+		case "aim":
+			u.Aim = value
+		}
+	}
+	return s.persistFileLocked("users.json", s.users)
 }
 
 // GetIngameSN returns the base64-encoded ingamesn from the latest NAS login for profileID.

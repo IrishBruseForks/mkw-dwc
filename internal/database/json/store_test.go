@@ -67,6 +67,28 @@ func TestJSONStoreRoundTrip(t *testing.T) {
 		t.Fatal("expected ingamesn from NAS login")
 	}
 
+	prof, err := s.GetProfile(profileid)
+	if err != nil || prof == nil {
+		t.Fatalf("GetProfile: %v %#v", err, prof)
+	}
+	if prof.UserID != userid || prof.Uniquenick == "" || prof.PID != "11" {
+		t.Fatalf("unexpected profile: %+v", prof)
+	}
+
+	if err := s.UpdateProfile(profileid, map[string]string{
+		"firstname": "Wii:test@ABCD",
+		"lastname":  "Player",
+	}); err != nil {
+		t.Fatalf("UpdateProfile: %v", err)
+	}
+	prof2, err := s.GetProfile(profileid)
+	if err != nil {
+		t.Fatalf("GetProfile after update: %v", err)
+	}
+	if prof2.Firstname != "Wii:test@ABCD" || prof2.Lastname != "Player" {
+		t.Fatalf("updated profile: %+v", prof2)
+	}
+
 	if err := s.DeleteSession(sesskey); err != nil {
 		t.Fatalf("delete session: %v", err)
 	}
@@ -85,5 +107,100 @@ func TestJSONStoreRoundTrip(t *testing.T) {
 		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
 			t.Fatalf("missing %s: %v", name, err)
 		}
+	}
+}
+
+func TestStoreNasLoginAuthtokenCollision(t *testing.T) {
+	dir := t.TempDir()
+	s, err := jsonstore.Open(dir)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer s.Close()
+	if err := s.Initialize(); err != nil {
+		t.Fatalf("init: %v", err)
+	}
+
+	userid1 := "0000000000002"
+	userid2 := "0000000000003"
+	auth1 := map[string]string{"userid": userid1, "gsbrcd": "RMCJ0"}
+	auth2 := map[string]string{"userid": userid2, "gsbrcd": "RMCJ0"}
+
+	if err := s.StoreNasLogin(userid1, "shared-token", auth1); err != nil {
+		t.Fatalf("first store: %v", err)
+	}
+	if err := s.StoreNasLogin(userid2, "shared-token", auth2); err == nil {
+		t.Fatal("expected authtoken collision error")
+	} else if !strings.Contains(err.Error(), "authtoken collision") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestStoreNasLoginUpdateToken(t *testing.T) {
+	dir := t.TempDir()
+	s, err := jsonstore.Open(dir)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer s.Close()
+	if err := s.Initialize(); err != nil {
+		t.Fatalf("init: %v", err)
+	}
+
+	userid := s.GetNextAvailableUserid()
+	auth := map[string]string{"userid": userid, "gsbrcd": "RMCJ0", "ingamesn": "Mii"}
+
+	if err := s.StoreNasLogin(userid, "token-old", auth); err != nil {
+		t.Fatalf("first store: %v", err)
+	}
+	if err := s.StoreNasLogin(userid, "token-new", auth); err != nil {
+		t.Fatalf("update token: %v", err)
+	}
+
+	got, err := s.GetNasLogin("token-new")
+	if err != nil || got == nil {
+		t.Fatalf("get new token: %v %#v", err, got)
+	}
+	if got["userid"] != userid {
+		t.Fatalf("userid = %q", got["userid"])
+	}
+
+	old, err := s.GetNasLogin("token-old")
+	if err != nil {
+		t.Fatalf("get old token: %v", err)
+	}
+	if old != nil {
+		t.Fatalf("old token should be gone, got %#v", old)
+	}
+}
+
+func TestStoreNasLoginIdempotentRestore(t *testing.T) {
+	dir := t.TempDir()
+	s, err := jsonstore.Open(dir)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer s.Close()
+	if err := s.Initialize(); err != nil {
+		t.Fatalf("init: %v", err)
+	}
+
+	userid := s.GetNextAvailableUserid()
+	auth := map[string]string{"userid": userid, "gsbrcd": "RMCJ0", "devname": "Wii"}
+
+	if err := s.StoreNasLogin(userid, "token-same", auth); err != nil {
+		t.Fatalf("first store: %v", err)
+	}
+	auth["devname"] = "Wii2"
+	if err := s.StoreNasLogin(userid, "token-same", auth); err != nil {
+		t.Fatalf("re-store same token: %v", err)
+	}
+
+	got, err := s.GetNasLogin("token-same")
+	if err != nil || got == nil {
+		t.Fatalf("get token: %v %#v", err, got)
+	}
+	if got["devname"] == auth["devname"] {
+		t.Fatalf("devname should be base64-encoded, got %q", got["devname"])
 	}
 }

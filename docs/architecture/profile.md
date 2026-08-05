@@ -29,8 +29,10 @@ Room listing and matchmaking expect a logged-in GameSpy session.
 2. Client sends `\login\` with `authtoken`, its own `challenge`, and `response`
 3. Server recomputes the expected response from NAS challenge + tokens
 4. On success: `\lc\2\` with `sesskey`, `proof`, `userid`, `profileid`, `uniquenick`, `lt`
-5. Keep-alives: `\ka\` echoed as `\ka\\final\`
-6. `\logout\` deletes the session and closes the connection
+5. Client may send `\updatepro\` (store firstname/lastname) and `\getprofile\`
+   (server replies `\pi\`)
+6. Keep-alives: `\ka\` echoed as `\ka\\final\`
+7. `\logout\` deletes the session and closes the connection
 
 Invalid authtoken or bad response returns a GameSpy `\error\` message.
 
@@ -45,6 +47,9 @@ Invalid authtoken or bad response returns a GameSpy `\error\` message.
 | Client command | Behavior |
 |----------------|----------|
 | `login` | Validate NAS token + crypto response, open session |
+| `getprofile` | Reply `\pi\` with profile fields (`nick`, `email`, `sig`, ...) |
+| `updatepro` | Persist profile fields (`firstname`, `lastname`, ...) |
+| `status` | Accept online status (friends broadcast not implemented yet) |
 | `ka` | Keep-alive reply |
 | `logout` | Delete session, close TCP |
 

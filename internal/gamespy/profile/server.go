@@ -1,4 +1,3 @@
-
 // Package profile implements the GameSpy profile (GPCM) TCP server.
 package profile
 
@@ -6,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"io"
 	"math/big"
@@ -13,9 +13,9 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/IrishBruse/mkw-dwc/internal/database"
 	"github.com/IrishBruse/mkw-dwc/internal/gamespy"
 	"github.com/IrishBruse/mkw-dwc/internal/logging"
-	"github.com/IrishBruse/mkw-dwc/internal/database"
 )
 
 // Server serves GameSpy profile login commands over TCP.
@@ -56,8 +56,8 @@ func (s *Server) Serve(ctx context.Context) error {
 }
 
 type connSession struct {
-	server   *Server
-	conn     net.Conn
+	server    *Server
+	conn      net.Conn
 	challenge string
 	sesskey   string
 	profileid int64
@@ -121,6 +121,12 @@ func (s *connSession) dispatch(chunk []byte) {
 		switch cmd["__cmd__"] {
 		case "login":
 			s.performLogin(cmd)
+		case "getprofile":
+			s.performGetProfile(cmd)
+		case "updatepro":
+			s.performUpdatePro(cmd)
+		case "status":
+			s.performStatus(cmd)
 		case "ka":
 			s.performKA()
 		case "logout":
@@ -182,6 +188,86 @@ func (s *connSession) performLogin(cmd map[string]string) {
 		"id":          cmd["id"],
 	})
 	_, _ = s.conn.Write(msg)
+}
+
+func (s *connSession) performGetProfile(cmd map[string]string) {
+	profileID, err := strconv.ParseInt(cmd["profileid"], 10, 64)
+	if err != nil || profileID == 0 {
+		logging.For("profile").Warnf("getprofile bad profileid %q from %s", cmd["profileid"], s.conn.RemoteAddr())
+		s.writeError("256", "The profile was invalid.", cmd["id"])
+		return
+	}
+
+	profile, err := s.server.DB.GetProfile(profileID)
+	if err != nil || profile == nil {
+		logging.For("profile").Warnf("getprofile missing profileid=%d from %s: %v", profileID, s.conn.RemoteAddr(), err)
+		s.writeError("256", "The profile was invalid.", cmd["id"])
+		return
+	}
+
+	sigBytes := make([]byte, 16)
+	if _, err := rand.Read(sigBytes); err != nil {
+		s.writeError("256", "The profile was invalid.", cmd["id"])
+		return
+	}
+
+	fields := map[string]string{
+		"__cmd__":     "pi",
+		"__cmd_val__": "",
+		"profileid":   strconv.FormatInt(profile.ProfileID, 10),
+		"nick":        profile.Uniquenick,
+		"userid":      profile.UserID,
+		"email":       profile.Email,
+		"sig":         hex.EncodeToString(sigBytes),
+		"uniquenick":  profile.Uniquenick,
+		"pid":         profile.PID,
+		"lon":         profile.Lon,
+		"lat":         profile.Lat,
+		"loc":         profile.Loc,
+		"id":          cmd["id"],
+	}
+	if profile.Firstname != "" {
+		fields["firstname"] = profile.Firstname
+	}
+	if profile.Lastname != "" {
+		fields["lastname"] = profile.Lastname
+	}
+
+	logging.For("profile").Infof("getprofile profileid=%d", profileID)
+	_, _ = s.conn.Write(gamespy.CreateGameSpyMessage(fields))
+}
+
+func (s *connSession) performUpdatePro(cmd map[string]string) {
+	if s.profileid == 0 {
+		logging.For("profile").Warnf("updatepro before login from %s", s.conn.RemoteAddr())
+		return
+	}
+
+	fields := make(map[string]string)
+	for key, value := range cmd {
+		switch key {
+		case "__cmd__", "__cmd_val__", "updatepro", "partnerid", "sesskey":
+			continue
+		default:
+			fields[key] = value
+		}
+	}
+	if len(fields) == 0 {
+		return
+	}
+
+	if err := s.server.DB.UpdateProfile(s.profileid, fields); err != nil {
+		logging.For("profile").Warnf("updatepro profileid=%d: %v", s.profileid, err)
+		return
+	}
+	logging.For("profile").Infof("updatepro profileid=%d fields=%v", s.profileid, fields)
+}
+
+func (s *connSession) performStatus(cmd map[string]string) {
+	if sesskey := cmd["sesskey"]; sesskey != "" {
+		s.sesskey = sesskey
+	}
+	logging.For("profile").Infof("status profileid=%d status=%s", s.profileid, cmd["__cmd_val__"])
 }
 
 func (s *connSession) performKA() {
