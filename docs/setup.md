@@ -50,8 +50,6 @@ sudo ufw allow 2:65535/udp
 sudo ufw reload
 ```
 
-Add `sudo ufw allow 9000/tcp` only if you skip `--proxy-bind`.
-
 **Router:** if the host is behind a home router, forward the same ports to the machine running `mkw-dwc`.
 
 You do not need ports for storage, admin UI, stats, or DLS. Those services are not part of this build.
@@ -72,7 +70,8 @@ Put the folder wherever you like. This guide uses `/home/yourusername/mkw-dwc`.
 
 ## 4. Config
 
-Skip Apache/Nginx. The binary has a built-in proxy.
+Skip Apache/Nginx. NAS listens on port 80 by default so retail clients can
+reach it directly. Use `--proxy-bind` only if you move NAS to another port.
 
 Default `mkw-dwc.ini` listens on all interfaces. Edit ports/IPs if needed.
 `[Store]` is required. Optional `[Logging]` controls verbosity, colors, and
@@ -89,14 +88,14 @@ Gpsp = true # GPSP player search
 Qr = true # QR / master server
 Browser = true # server browser
 Natneg = true # NAT negotiation
-Proxy = true # reverse proxy
+Proxy = true # reverse proxy (only if --proxy-bind is set)
 App = true # startup and lifecycle
 LogFile = # mirror stderr INFO/WARN/ERROR lines (empty to disable)
 DumpFile = # raw NAS/proxy TCP dumps (empty to disable; set a path to debug 20100/23400)
 
 [NasServer]
 IP = 0.0.0.0 # bind address
-Port = 9000 # TCP listen port
+Port = 80 # TCP listen port (retail clients expect NAS on 80)
 SvcHost = dls1.nintendowifi.net # hostname returned for NAS service location
 
 [GameSpyQRServer]
@@ -128,8 +127,10 @@ Path = "data" # JSON data directory
 Typical run:
 
 ```shell
-sudo ./mkw-dwc --config mkw-dwc.ini --proxy-bind :80
+sudo ./mkw-dwc --config mkw-dwc.ini
 ```
+
+`sudo` (or `CAP_NET_BIND_SERVICE`) is only so NAS can bind port 80.
 
 ---
 
@@ -192,7 +193,7 @@ Skip dnsmasq. Point these names at your server IP (example `192.168.1.100`):
 
 ```shell
 cd /home/yourusername/mkw-dwc
-sudo ./mkw-dwc --config mkw-dwc.ini --proxy-bind :80
+sudo ./mkw-dwc --config mkw-dwc.ini
 ```
 
 Expected log lines (timestamps and colors depend on `[Logging]`):
@@ -200,15 +201,14 @@ Expected log lines (timestamps and colors depend on `[Logging]`):
 ```
 INFO  app     store: type=json path=data
 INFO  app     logging: level=info color=auto timestamps=true log_file="" dump_file=""
-INFO  app     nas: :9000
+INFO  app     nas: :80
 INFO  app     profile: :29900
 INFO  app     gpsp: :29901
 INFO  app     qr: :27900
 INFO  app     browser: :28910
 INFO  app     natneg: :27901
-INFO  app     proxy: :80
 INFO  app     starting nas
-INFO  nas     listening on :9000
+INFO  nas     listening on :80
 INFO  app     starting profile
 ...
 ```
@@ -216,7 +216,7 @@ INFO  app     starting profile
 Store files under `[Store]` `Path` are created on first run. Set
 `Type = "json"` in `mkw-dwc.ini`.
 
-Confirm with the [health checks](../README.md#quick-start) in the README. If both return `ok`, move on to the Wii.
+Confirm with the [health check](../README.md#quick-start) in the README. If it returns `ok`, move on to the Wii.
 
 There is no admin page (`:9009`) or stats page (`:9001`) in this build. Use health checks instead.
 
@@ -315,12 +315,12 @@ usually yields EC 84010 or 91010.
 ### `mkw-dwc` won't start
 
 - Confirm Go 1.22+, a valid `mkw-dwc.ini`, and free ports (`ss -tulpn`)
-- Port 80 needs `sudo`, `CAP_NET_BIND_SERVICE`, or another `--proxy-bind` port matched on the client side
+- Port 80 needs `sudo` or `CAP_NET_BIND_SERVICE`
 
 ### Health check fails
 
-- Confirm `mkw-dwc` is still running: `curl http://127.0.0.1:9000/` should return `ok`
-- Confirm `ufw` allows `80/tcp` and you passed `--proxy-bind :80`
+- Confirm `mkw-dwc` is still running: `curl -H "Host: naswii.nintendowifi.net" http://127.0.0.1/` should return `ok`
+- Confirm `ufw` allows `80/tcp` and `[NasServer] Port = 80`
 - From another device, use the machine's LAN IP instead of `localhost`
 
 ### Wii Connection Test fails
@@ -334,9 +334,9 @@ usually yields EC 84010 or 91010.
 
 - **20100** - dirty ISO, NoSSL missing, Dolphin cheats disabled (NoSSL not
   actually running), wrong Wii DNS, or very bad network
-- **234XX** - SSL/proxy mismatch, or NAS HTTP rejected (duplicate `Host`
-  headers from MKW/Dolphin used to 400 in Go). Enable NoSSL, use
-  `--proxy-bind :80`, and run a build that strips duplicate Host headers
+- **234XX** - SSL mismatch, or NAS HTTP rejected (duplicate `Host`
+  headers from MKW/Dolphin used to 400 in Go). Enable NoSSL, confirm NAS is
+  on port 80, and run a build that strips duplicate Host headers
 - **23502** - something on port 80, but `mkw-dwc` is not running
 - **5XXXX** - no Wii internet connection, or network issue
 - **60000** - license already has a Friend Code. Use a brand new license
@@ -356,8 +356,7 @@ Type=simple
 User=mkw-dwc
 WorkingDirectory=/opt/mkw-dwc
 ExecStart=/opt/mkw-dwc/mkw-dwc \
-  --config mkw-dwc.ini \
-  --proxy-bind :80
+  --config mkw-dwc.ini
 Restart=on-failure
 AmbientCapabilities=CAP_NET_BIND_SERVICE
 

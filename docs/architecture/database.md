@@ -38,6 +38,7 @@ Under `Path` (example `data/`):
 | `sessions.json` | Active GPCM sessions (sesskey, profileid, loginticket) |
 | `nas_logins.json` | NAS authtoken -> login payload for later GPCM validation |
 | `banned.json` | Per-game IP bans checked during NAS acctcreate/login |
+| `meta.json` | Reserved `next_userid` counter for `acctcreate` |
 
 Writes use temp-file + rename. Restarting reloads the same files.
 

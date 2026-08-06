@@ -92,7 +92,7 @@ func (s *connSession) performLogin(cmd map[string]string) {
 	authtoken := cmd["authtoken"]
 	authData, err := s.server.DB.GetNasLogin(authtoken)
 	if err != nil || authData == nil {
-		logging.For("profile").Warnf("login auth failure from %s: %v", s.conn.RemoteAddr(), err)
+		logging.For("profile").Warnf("login auth failure from %s: unknown or replaced authtoken", s.conn.RemoteAddr())
 		s.writeError("266", "There was an error validating the pre-authentication.", cmd["id"])
 		return
 	}

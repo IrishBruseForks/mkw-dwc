@@ -11,8 +11,7 @@ No Python service farm, no external database, no cluster to babysit.
 
 | Job | How |
 |-----|-----|
-| Account login | NAS HTTP auth (`/ac`, `/pr`) |
-| Optional NAS proxy | `--proxy-bind` for Nintendo NAS hostnames on port 80 |
+| Account login | NAS HTTP auth on port 80 (`/ac`, `/pr`) |
 | GameSpy login | Profile server (GPCM) |
 | Friend lookup | GPSP player search (`otherslist`) |
 | Room advertise / search | QR (UDP) + server browser (TCP) |
@@ -45,14 +44,16 @@ Path = "data"
 ```
 
 ```shell
-sudo ./mkw-dwc --config mkw-dwc.ini --proxy-bind :80
+sudo ./mkw-dwc --config mkw-dwc.ini
 ```
 
-Health checks:
+`sudo` (or `CAP_NET_BIND_SERVICE`) is only so NAS can bind port 80. Retail
+clients expect NAS there.
+
+Health check:
 
 ```shell
-curl http://127.0.0.1:9000/                               # NAS -> ok
-curl -H "Host: naswii.nintendowifi.net" http://127.0.0.1/ # proxy -> ok
+curl -H "Host: naswii.nintendowifi.net" http://127.0.0.1/ # NAS -> ok
 ```
 
 ```shell
@@ -64,27 +65,26 @@ go test ./tests/...
 | Flag | Default | Meaning |
 |------|---------|---------|
 | `--config` | `mkw-dwc.ini` | Path to server INI |
-| `--proxy-bind` | empty (off) | NAS proxy listen address, e.g. `:80` |
+| `--proxy-bind` | empty (off) | Optional reverse proxy when NAS is not on 80 |
 
-`--proxy-bind :80` forwards `naswii.nintendowifi.net` and `nas.nintendowifi.net`
-to NAS on port 9000. Binding port 80 usually needs `sudo` or
-`CAP_NET_BIND_SERVICE`.
+Default NAS listens on port 80 (`[NasServer] Port`). Use `--proxy-bind` only if
+you put NAS on another port (for example 9000) and want a front door that
+forwards `naswii.nintendowifi.net` / `nas.nintendowifi.net` to that backend.
 
 ## Ports
 
-Defaults from `mkw-dwc.ini` (and `--proxy-bind`):
+Defaults from `mkw-dwc.ini`:
 
 | Service | Port | Proto |
 |---------|------|-------|
-| HTTP proxy (optional) | 80 | TCP |
-| NAS | 9000 | TCP |
+| NAS | 80 | TCP |
 | QR | 27900 | UDP |
 | NAT negotiation | 27901 | UDP |
 | Server browser | 28910 | TCP |
 | Profile | 29900 | TCP |
 | GPSP (player search) | 29901 | TCP |
 
-Skip `--proxy-bind` and expose NAS yourself? Open `9000/tcp` as well.
+Optional HTTP proxy via `--proxy-bind` if you move NAS off port 80.
 
 ## Docs
 

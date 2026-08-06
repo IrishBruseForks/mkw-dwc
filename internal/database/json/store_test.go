@@ -207,3 +207,69 @@ func TestStoreNasLoginIdempotentRestore(t *testing.T) {
 		t.Fatalf("devname should be base64-encoded, got %q", got["devname"])
 	}
 }
+
+func TestGetNextAvailableUseridReservesUniqueIDs(t *testing.T) {
+	dir := t.TempDir()
+	s, err := jsonstore.Open(dir)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer s.Close()
+	if err := s.Initialize(); err != nil {
+		t.Fatalf("init: %v", err)
+	}
+
+	first := s.GetNextAvailableUserid()
+	second := s.GetNextAvailableUserid()
+	if first != "0000000000002" {
+		t.Fatalf("first userid = %q", first)
+	}
+	if second != "0000000000003" {
+		t.Fatalf("second userid = %q (want unique reservation without users row)", second)
+	}
+
+	s2, err := jsonstore.Open(dir)
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	defer s2.Close()
+	third := s2.GetNextAvailableUserid()
+	if third != "0000000000004" {
+		t.Fatalf("third userid after reload = %q", third)
+	}
+}
+
+func TestStoreNasLoginSameUseridDifferentGsbrcd(t *testing.T) {
+	dir := t.TempDir()
+	s, err := jsonstore.Open(dir)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer s.Close()
+	if err := s.Initialize(); err != nil {
+		t.Fatalf("init: %v", err)
+	}
+
+	userid := s.GetNextAvailableUserid()
+	authA := map[string]string{"userid": userid, "gsbrcd": "RMCJaaaaaaaa", "ingamesn": "A"}
+	authB := map[string]string{"userid": userid, "gsbrcd": "RMCJbbbbbbbb", "ingamesn": "B"}
+
+	if err := s.StoreNasLogin(userid, "token-a", authA); err != nil {
+		t.Fatalf("store a: %v", err)
+	}
+	if err := s.StoreNasLogin(userid, "token-b", authB); err != nil {
+		t.Fatalf("store b: %v", err)
+	}
+
+	gotA, err := s.GetNasLogin("token-a")
+	if err != nil || gotA == nil {
+		t.Fatalf("get token-a: %v %#v", err, gotA)
+	}
+	gotB, err := s.GetNasLogin("token-b")
+	if err != nil || gotB == nil {
+		t.Fatalf("get token-b: %v %#v", err, gotB)
+	}
+	if gotA["gsbrcd"] != "RMCJaaaaaaaa" || gotB["gsbrcd"] != "RMCJbbbbbbbb" {
+		t.Fatalf("gsbrcd mismatch a=%q b=%q", gotA["gsbrcd"], gotB["gsbrcd"])
+	}
+}

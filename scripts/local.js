@@ -18,7 +18,6 @@ const { dirname, join } = require("node:path");
 const REPO_ROOT = join(__dirname, "..");
 const BIN = join(REPO_ROOT, "mkw-dwc");
 const CONFIG = join(REPO_ROOT, "mkw-dwc.ini");
-const PROXY_BIND = ":80";
 const FLATPAK_APP = "org.DolphinEmu.dolphin-emu";
 const GAME_IDS = ["RMCE01", "RMCJ01", "RMCP01"];
 const NOSSL_NAME = "$NoSSL";
@@ -213,9 +212,9 @@ function cmdRun() {
 	} catch {
 		die("binary not found, run: scripts/local.js build");
 	}
-	const args = ["--config", CONFIG, "--proxy-bind", PROXY_BIND];
+	const args = ["--config", CONFIG];
 	if (canBind80()) {
-		log("starting mkw-dwc (port 80, no sudo)");
+		log("starting mkw-dwc (NAS on port 80, no sudo)");
 		run(BIN, args, { cwd: REPO_ROOT });
 		return;
 	}
@@ -225,10 +224,10 @@ function cmdRun() {
 	run("sudo", [BIN, ...args], { cwd: REPO_ROOT });
 }
 
-async function check(label, url, headers = {}) {
+async function check(label, url) {
 	let res;
 	try {
-		res = await fetch(url, { headers });
+		res = await fetch(url);
 	} catch (err) {
 		die(`${label} failed: ${url} (${err.message})`);
 	}
@@ -239,11 +238,7 @@ async function check(label, url, headers = {}) {
 }
 
 async function cmdHealth() {
-	await check("NAS :9000", "http://127.0.0.1:9000/");
-	await check("proxy :80", "http://127.0.0.1/", {
-		Host: "naswii.nintendowifi.net",
-	});
-	log("all health checks passed");
+	await check("NAS :80", "http://127.0.0.1/");
 }
 
 async function cmdSetup(args) {
@@ -276,8 +271,8 @@ Commands:
   build               go build -o mkw-dwc
   grant-bind          one-time setcap for port 80 without sudo
   dolphin             NoSSL Gecko + EnableCheats for Flatpak Dolphin
-  run                 start mkw-dwc with --proxy-bind :80
-  health              fetch NAS and proxy (server must be running)
+  run                 start mkw-dwc (NAS on port 80)
+  health              fetch NAS on :80 (server must be running)
 
 Hosts aliases: just hosts / just hosts-uninstall
 

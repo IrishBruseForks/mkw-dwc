@@ -53,8 +53,7 @@ flowchart TB
     Wii[Mario Kart Wii]
 
     subgraph login [1. Log in]
-        Proxy[Proxy :80 optional]
-        NAS[NAS :9000]
+        NAS[NAS :80]
         Profile[Profile :29900]
         GPSP[GPSP :29901]
     end
@@ -71,7 +70,7 @@ flowchart TB
     Store[(Account store)]
     Board[Backend]
 
-    Wii --> Proxy --> NAS
+    Wii --> NAS
     Wii --> Profile
     Wii --> GPSP
     Wii --> QR
@@ -111,8 +110,8 @@ Nintendo and GameSpy used dense names. Here is the short version:
 
 | Service | Doc | Port | Proto | Job |
 |---------|-----|------|-------|-----|
-| NAS | [nas.md](nas.md) | 9000 | TCP HTTP | Account create / login / service location |
-| Proxy | [proxy.md](proxy.md) | 80 (optional) | TCP HTTP | Forward Nintendo NAS hostnames to NAS |
+| NAS | [nas.md](nas.md) | 80 | TCP HTTP | Account create / login / service location |
+| Proxy | [proxy.md](proxy.md) | optional | TCP HTTP | Forward Nintendo NAS hostnames when NAS is not on 80 |
 | Profile | [profile.md](profile.md) | 29900 | TCP | Prove NAS token, open GameSpy session |
 | GPSP | [gpsp.md](gpsp.md) | 29901 | TCP | Friend profile lookup (`otherslist`) |
 | QR / Master | [qr.md](qr.md) | 27900 | UDP | Hosts advertise rooms (heartbeats) |
@@ -129,13 +128,12 @@ Nintendo and GameSpy used dense names. Here is the short version:
 ## Typical connection flow
 
 1. Wii DNS resolves `nintendowifi.net` to your server
-2. **Proxy** (if enabled) forwards NAS hostnames to **NAS** on :9000
-3. **NAS** creates the account / issues an auth token, returns GameSpy hostnames
-4. **Profile** handles GameSpy login and writes a session into the **account store**
-5. **GPSP** answers `otherslist` so WFC connect can finish (empty friends still query)
-6. Host sends **QR** heartbeats, which fill the **backend** room list
-7. Clients query the **browser** for rooms (reads the backend)
-8. On join, the **browser** relays via **QR**, then **NATNEG** sets up P2P
+2. **NAS** on :80 creates the account / issues an auth token, returns GameSpy hostnames
+3. **Profile** handles GameSpy login and writes a session into the **account store**
+4. **GPSP** answers `otherslist` so WFC connect can finish (empty friends still query)
+5. Host sends **QR** heartbeats, which fill the **backend** room list
+6. Clients query the **browser** for rooms (reads the backend)
+7. On join, the **browser** relays via **QR**, then **NATNEG** sets up P2P
 
 For hosting and DNS, see [Setup](../setup.md).
 
@@ -148,12 +146,12 @@ only need to run a server.
 
 ### Entry point: `main.go`
 
-1. Parses CLI flags (`--config`, `--proxy-bind`)
+1. Parses CLI flags (`--config`, optional `--proxy-bind`)
 2. Loads `mkw-dwc.ini` (including required `[Store]`)
 3. Initializes logging from optional `[Logging]` via `internal/logging`
 4. Opens the account store from `[Store]` Type/Path
 5. Creates the shared `backend.Backend`
-6. Starts six (or seven) services concurrently
+6. Starts six services concurrently (seven if `--proxy-bind` is set)
 7. Shuts down on SIGINT/SIGTERM
 
 The QR server is passed into the browser as a **relay**, so the browser can
@@ -165,7 +163,7 @@ Loads `mkw-dwc.ini`, an INI file with one section per service:
 
 | Section | Default port | Protocol |
 |---------|-------------|----------|
-| `NasServer` | 9000 | TCP (HTTP) |
+| `NasServer` | 80 | TCP (HTTP) |
 | `GameSpyQRServer` | 27900 | UDP |
 | `GameSpyNatNegServer` | 27901 | UDP |
 | `GameSpyServerBrowserServer` | 28910 | TCP |
@@ -189,8 +187,8 @@ writes verbose raw NAS/proxy TCP dumps to a separate file via `internal/httpfix`
 
 | Package | Doc | Notes |
 |---------|-----|-------|
-| `internal/nas` | [NAS](nas.md) | HTTP auth on `:9000` (`/`, `/ac`, `/pr`). Retail needs NoSSL |
-| `internal/proxy` | [Proxy](proxy.md) | Optional `--proxy-bind` (usually `:80`) |
+| `internal/nas` | [NAS](nas.md) | HTTP auth on `:80` (`/`, `/ac`, `/pr`). Retail needs NoSSL |
+| `internal/proxy` | [Proxy](proxy.md) | Optional `--proxy-bind` when NAS is not on 80 |
 | `internal/httpfix` | [Proxy](proxy.md) | Duplicate Host strip + optional raw dumps |
 | `internal/database` | [Database](database.md) | `[Store]` JSON account files |
 | `internal/backend` | [Backend](backend.md) | In-memory rooms + NATNEG, plus filter expressions |

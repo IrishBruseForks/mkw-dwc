@@ -9,9 +9,13 @@ USER_ROOT="${MKWII_DOLPHIN_DIR:-$REPO_ROOT/tmp/dolphin-test}"
 ISO="${1:-${MKWII_ISO:-}}"
 VIDEO_BACKEND="${MKWII_VIDEO:-Vulkan}"
 # Seconds after both windows appear before sending the first A (auto only).
-BOOT_WAIT="${MKWII_BOOT_WAIT:-40}"
-# Extra leading A presses to skip logos / opening movie (0 if boot wait is long enough).
-SKIP_AS="${MKWII_SKIP_AS:-1}"
+BOOT_WAIT="${MKWII_BOOT_WAIT:-10}"
+# Leading A clicks to skip health warning / logos / title.
+SKIP_AS="${MKWII_SKIP_AS:-18}"
+# Pixels per IR nudge when opening Nintendo WFC from main menu.
+IR_NUDGE="${MKWII_IR_NUDGE:-80}"
+# Delay between skip-A presses (seconds).
+A_INTERVAL="${MKWII_A_INTERVAL:-0.7}"
 
 NOSSL_NAME='$NoSSL'
 NOSSL_LINES=(
@@ -38,11 +42,12 @@ usage() {
 	echo "  ISO may also come from MKWII_ISO."
 	echo "  auto  run menu automation on two already-open Mario Kart Wii windows"
 	echo "  Env:"
-	echo "    MKWII_DOLPHIN_DIR       user dirs root (default: tmp/dolphin-test)"
-	echo "    MKWII_CONTROLLER_CONFIG source for Wiimote/GCPad INIs (Flatpak Dolphin)"
-	echo "    MKWII_VIDEO             Vulkan|OGL (default: Vulkan)"
-	echo "    MKWII_BOOT_WAIT         seconds before menu keys (default: 40 launch, 0 for auto)"
-	echo "    MKWII_SKIP_AS           extra A presses before title (default: 1)"
+	echo "    MKWII_DOLPHIN_DIR  user dirs root (default: tmp/dolphin-test)"
+	echo "    MKWII_VIDEO        Vulkan|OGL (default: Vulkan)"
+	echo "    MKWII_BOOT_WAIT    seconds before menu automation (default: 10 launch, 0 for auto)"
+	echo "    MKWII_SKIP_AS      A clicks to skip health/logos/title (default: 18)"
+	echo "    MKWII_A_INTERVAL   seconds between skip-A clicks (default: 0.7)"
+	echo "    MKWII_AUTO         run menu automation after launch (default: 1)"
 	exit 1
 }
 
@@ -65,9 +70,9 @@ is_cinnamon() {
 }
 
 init_backends() {
+	# Flatpak Dolphin is XWayland. Automation uses xdotool mouse + Cinnamon focus.
+	need xdotool
 	if is_wayland; then
-		need ydotool
-		INPUT_BACKEND=ydotool
 		if is_cinnamon; then
 			WINDOW_BACKEND=cinnamon
 			need gdbus
@@ -76,9 +81,7 @@ init_backends() {
 			die "Wayland automation needs Cinnamon (org.Cinnamon Eval). Use an X11 session or focus windows manually."
 		fi
 	else
-		need xdotool
 		need wmctrl
-		INPUT_BACKEND=xdotool
 		WINDOW_BACKEND=x11
 	fi
 }
@@ -144,16 +147,20 @@ write_nossl() {
 	} >"${ini}"
 }
 
+# Copy Flatpak Dolphin GCPad (Xbox etc.) and write basic keyboard Wiimote/GCPad.
+# Dolphin XInput2 exposes keys on "Virtual core pointer", not "Virtual core keyboard".
 controller_config_src() {
 	local src="${MKWII_CONTROLLER_CONFIG:-${HOME}/.var/app/${FLATPAK_APP}/config/dolphin-emu}"
-	if [[ ! -d "${src}" ]]; then
-		die "controller config dir not found: ${src} (set MKWII_CONTROLLER_CONFIG)"
+	if [[ -d "${src}" ]]; then
+		echo "${src}"
+	elif [[ -d "${src}/Config" ]]; then
+		echo "${src}"
 	fi
-	echo "${src}"
 }
 
 controller_ini_path() {
 	local src="$1" name="$2"
+	[[ -n "${src}" ]] || return 0
 	if [[ -f "${src}/${name}" ]]; then
 		echo "${src}/${name}"
 	elif [[ -f "${src}/Config/${name}" ]]; then
@@ -161,40 +168,225 @@ controller_ini_path() {
 	fi
 }
 
-# Keep mouse left click on Wiimote A for automation, even when layering
-# controller bindings from the user's Dolphin profile.
-ensure_wiimote_click_a() {
+# Arrow keys on XInput2 pointer read inverted for D-Pad; swap key names.
+fix_wiimote_dpad_keys() {
 	local ini="$1"
 	[[ -f "${ini}" ]] || return 0
-	if grep -qE 'Buttons/A =.*`Click 1`' "${ini}"; then
-		return 0
-	fi
-	awk '
-		/^Buttons\/A = / {
-			line = $0
-			sub(/^Buttons\/A = /, "", line)
-			if (line !~ /`Click 1`/) {
-				print "Buttons/A = " line " | `Click 1`"
-				next
-			}
-		}
-		{ print }
-	' "${ini}" >"${ini}.tmp" && mv "${ini}.tmp" "${ini}"
+	python3 - "$ini" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+swap = {
+	"D-Pad/Up": "Down",
+	"D-Pad/Down": "Up",
+	"D-Pad/Left": "Right",
+	"D-Pad/Right": "Left",
+}
+lines = path.read_text().splitlines()
+out, in_w1 = [], False
+for line in lines:
+	s = line.strip()
+	if s.startswith("[") and s.endswith("]"):
+		in_w1 = s == "[Wiimote1]"
+		out.append(line)
+		continue
+	if in_w1 and "=" in line:
+		key, _, val = line.partition("=")
+		key, val = key.strip(), val.strip()
+		if key in swap:
+			out.append(f"{key} = {swap[key]}")
+			continue
+	out.append(line)
+path.write_text("\n".join(out) + "\n")
+PY
 }
 
-# Copy the user's controller profile into an isolated test user dir.
+write_wiimote_pointer() {
+	local ini="$1"
+	mkdir -p "$(dirname "${ini}")"
+	cat >"${ini}" <<'EOF'
+[Wiimote1]
+Device = XInput2/0/Virtual core pointer
+Buttons/A = `Click 1`
+Buttons/B = `Click 3`
+Buttons/1 = `1`
+Buttons/2 = `2`
+Buttons/- = Q
+Buttons/+ = E
+Buttons/Home = Return
+D-Pad/Up = Down
+D-Pad/Down = Up
+D-Pad/Left = Right
+D-Pad/Right = Left
+IR/Up = `Cursor Y-`
+IR/Down = `Cursor Y+`
+IR/Left = `Cursor X-`
+IR/Right = `Cursor X+`
+Extension = None
+[Wiimote2]
+Device = XInput2/0/Virtual core pointer
+[Wiimote3]
+Device = XInput2/0/Virtual core pointer
+[Wiimote4]
+Device = XInput2/0/Virtual core pointer
+[BalanceBoard]
+Device = XInput2/0/Virtual core pointer
+EOF
+}
+
+write_gcpad_keyboard() {
+	local ini="$1"
+	mkdir -p "$(dirname "${ini}")"
+	cat >"${ini}" <<'EOF'
+[GCPad1]
+Device = XInput2/0/Virtual core pointer
+Buttons/A = X
+Buttons/B = Z
+Buttons/X = C
+Buttons/Y = V
+Buttons/Z = Shift_L
+Buttons/Start = Return
+Main Stick/Up = W
+Main Stick/Down = S
+Main Stick/Left = A
+Main Stick/Right = D
+C-Stick/Up = I
+C-Stick/Down = K
+C-Stick/Left = J
+C-Stick/Right = L
+Triggers/L = Q
+Triggers/R = E
+Triggers/L-Analog = Q
+Triggers/R-Analog = E
+D-Pad/Up = Down
+D-Pad/Down = Up
+D-Pad/Left = Right
+D-Pad/Right = Left
+[GCPad2]
+Device = XInput2/0/Virtual core pointer
+[GCPad3]
+Device = XInput2/0/Virtual core pointer
+[GCPad4]
+Device = XInput2/0/Virtual core pointer
+EOF
+}
+
+# OR keyboard binds onto an existing GCPad (Device stays on the gamepad).
+or_gcpad_keyboard() {
+	local ini="$1"
+	[[ -f "${ini}" ]] || return 0
+	python3 - "$ini" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+kb = "XInput2/0/Virtual core pointer"
+binds = {
+	"Buttons/A": "X",
+	"Buttons/B": "Z",
+	"Buttons/X": "C",
+	"Buttons/Y": "V",
+	"Buttons/Z": "Shift_L",
+	"Buttons/Start": "Return",
+	"Main Stick/Up": "W",
+	"Main Stick/Down": "S",
+	"Main Stick/Left": "A",
+	"Main Stick/Right": "D",
+	"C-Stick/Up": "I",
+	"C-Stick/Down": "K",
+	"C-Stick/Left": "J",
+	"C-Stick/Right": "L",
+	"Triggers/L": "Q",
+	"Triggers/R": "E",
+	"Triggers/L-Analog": "Q",
+	"Triggers/R-Analog": "E",
+	"D-Pad/Up": "Down",
+	"D-Pad/Down": "Up",
+	"D-Pad/Left": "Right",
+	"D-Pad/Right": "Left",
+}
+
+def expr(key: str) -> str:
+	return f"(`{kb}:{key}`)"
+
+lines = path.read_text().splitlines()
+out, in_pad1, seen = [], False, set()
+for line in lines:
+	s = line.strip()
+	if s.startswith("[") and s.endswith("]"):
+		if in_pad1:
+			for k, v in binds.items():
+				if k not in seen:
+					out.append(f"{k} = {expr(v)}")
+			seen.clear()
+		in_pad1 = s == "[GCPad1]"
+		out.append(line)
+		continue
+	if not in_pad1 or "=" not in line:
+		out.append(line)
+		continue
+	key, _, val = line.partition("=")
+	key, val = key.strip(), val.strip()
+	if key not in binds:
+		out.append(line)
+		continue
+	seen.add(key)
+	extra = expr(binds[key])
+	if f"`{kb}:{binds[key]}`" in val:
+		out.append(line)
+	elif not val:
+		out.append(f"{key} = {extra}")
+	else:
+		out.append(f"{key} = {val} | {extra}")
+if in_pad1:
+	for k, v in binds.items():
+		if k not in seen:
+			out.append(f"{k} = {expr(v)}")
+path.write_text("\n".join(out) + "\n")
+PY
+}
+
 seed_controllers() {
 	local dir="$1"
-	local src path name
-	src="$(controller_config_src)"
+	local src path ini
 	mkdir -p "${dir}/Config"
-	for name in WiimoteNew.ini GCPadNew.ini GCKeyNew.ini; do
-		path="$(controller_ini_path "${src}" "${name}")"
-		if [[ -n "${path}" ]]; then
-			cp "${path}" "${dir}/Config/${name}"
+	src="$(controller_config_src)"
+	path="$(controller_ini_path "${src}" "GCPadNew.ini")"
+	if [[ -n "${path}" ]]; then
+		cp "${path}" "${dir}/Config/GCPadNew.ini"
+		or_gcpad_keyboard "${dir}/Config/GCPadNew.ini"
+	else
+		write_gcpad_keyboard "${dir}/Config/GCPadNew.ini"
+	fi
+	path="$(controller_ini_path "${src}" "WiimoteNew.ini")"
+	if [[ -n "${path}" ]]; then
+		cp "${path}" "${dir}/Config/WiimoteNew.ini"
+		fix_wiimote_dpad_keys "${dir}/Config/WiimoteNew.ini"
+	else
+		write_wiimote_pointer "${dir}/Config/WiimoteNew.ini"
+	fi
+
+	# GC ports so Xbox/keyboard GCPad works in Wii games (MKWii).
+	ini="${dir}/Config/Dolphin.ini"
+	if [[ -f "${ini}" ]]; then
+		if grep -qE '^SIDevice0[[:space:]]*=' "${ini}"; then
+			sed -i 's/^SIDevice0[[:space:]]*=.*/SIDevice0 = 6/' "${ini}"
+		elif grep -qE '^\[Core\]' "${ini}"; then
+			sed -i '/^\[Core\]/a SIDevice0 = 6' "${ini}"
+		else
+			printf '\n[Core]\nSIDevice0 = 6\n' >>"${ini}"
 		fi
-	done
-	ensure_wiimote_click_a "${dir}/Config/WiimoteNew.ini"
+		if ! grep -qE '^BackgroundInput[[:space:]]*=' "${ini}"; then
+			if grep -qE '^\[Input\]' "${ini}"; then
+				sed -i '/^\[Input\]/a BackgroundInput = True' "${ini}"
+			else
+				printf '\n[Input]\nBackgroundInput = True\n' >>"${ini}"
+			fi
+		else
+			sed -i 's/^BackgroundInput[[:space:]]*=.*/BackgroundInput = True/' "${ini}"
+		fi
+	fi
 }
 
 seed_user() {
@@ -207,11 +399,15 @@ PermissionAsked = True
 [Core]
 EnableCheats = True
 GFXBackend = ${VIDEO_BACKEND}
+SIDevice0 = 6
+SIDevice1 = 6
 [Interface]
 ConfirmStop = False
 RenderToMain = False
 OnScreenDisplayMessages = False
 PauseOnFocusLost = False
+[Input]
+BackgroundInput = True
 [DSP]
 Volume = ${volume}
 [General]
@@ -265,6 +461,46 @@ mkw_wids_ltr() {
 	} | sort -n -k1,1 | awk 'NR<=2 { print $2 }'
 }
 
+# Two MKW X11 window IDs, left-to-right by screen X (P1 then P2).
+mkw_x11_ids_ltr() {
+	mkw_wids_ltr
+}
+
+# Index of cinnamon meta id among LTR MKW windows (0-based), or empty.
+cinnamon_mkw_index() {
+	local target="$1"
+	python3 -c '
+import json, sys
+target = sys.argv[1]
+wins = json.loads(sys.stdin.read() or "[]")
+for i, w in enumerate(wins):
+    if str(w["id"]) == target:
+        print(i)
+        break
+' "${target}" < <(mkw_windows_cinnamon)
+}
+
+# Resolve an automation window id to an X11 id for xdotool input.
+# Cinnamon meta ids are mapped to X11 ids by left-to-right order.
+x11_id_for() {
+	local wid="$1"
+	local idx
+	local -a xids=()
+
+	if [[ "${WINDOW_BACKEND}" != cinnamon ]]; then
+		echo "${wid}"
+		return 0
+	fi
+
+	mapfile -t xids < <(mkw_x11_ids_ltr) || true
+	if ((${#xids[@]} < 2)); then
+		die "need 2 X11 Mario Kart Wii windows for input (found ${#xids[@]})"
+	fi
+	idx="$(cinnamon_mkw_index "${wid}")"
+	[[ -n "${idx}" ]] || die "cinnamon window ${wid} not in MKW pair"
+	echo "${xids[${idx}]}"
+}
+
 mkw_pair_ids() {
 	if [[ "${WINDOW_BACKEND}" == cinnamon ]]; then
 		python3 -c '
@@ -274,7 +510,7 @@ for w in wins:
     print(w["id"])
 ' < <(mkw_windows_cinnamon)
 	else
-		mkw_wids_ltr
+		mkw_x11_ids_ltr
 	fi
 }
 
@@ -413,10 +649,9 @@ place_windows() {
 		oy=0
 	fi
 
-	# Equal tiles on the left monitor only. Keep a real gutter so frame
-	# chrome cannot overlap, and use the same Y for both windows.
-	gap=32
-	margin=12
+	# Equal tiles on the left monitor only, flush to edges.
+	gap=0
+	margin=0
 	w=$(((sw - gap - 2 * margin) / 2))
 	h=$((w * 9 / 16))
 	if ((h > sh - 2 * margin)); then
@@ -459,134 +694,96 @@ place_windows() {
 	echo "left monitor ${sw}x${sh}+${ox}+${oy}: P1 ${aw}x${ah}@${ax},${ay} P2 ${bw}x${bh}@${bx},${by}"
 }
 
-input_key() {
-	local key="$1"
-	if [[ "${INPUT_BACKEND}" == ydotool ]]; then
-		case "${key}" in
-		Down) ydotool key 108:1 108:0 ;;
-		Up) ydotool key 103:1 103:0 ;;
-		Left) ydotool key 105:1 105:0 ;;
-		Right) ydotool key 106:1 106:0 ;;
-		*) die "unsupported ydotool key: ${key}" ;;
-		esac
-	else
-		xdotool key --clearmodifiers "${key}"
-	fi
-}
-
-# Wiimote A is mouse left click in the seeded profile.
-tap_a() {
+# Cinnamon focus only.
+focus_game() {
 	local wid="$1"
-	local cx cy
 	window_activate "${wid}"
-	if [[ "${INPUT_BACKEND}" == ydotool ]]; then
-		read -r cx cy < <(python3 -c '
-import json, sys
-r = json.loads(sys.stdin.read())
-print(r["x"] + r["w"] // 2, r["y"] + r["h"] // 2)
-' < <(cinnamon_eval "
-let w = global.display.get_tab_list(0, null).find(x => x.get_id() === ${wid});
-if (!w) 'missing';
-else {
-	let r = w.get_frame_rect();
-	JSON.stringify({x: r.x, y: r.y, w: r.width, h: r.height});
-}
-"))
-		ydotool mousemove "${cx}" "${cy}"
-		sleep 0.05
-		ydotool click 1
-	else
-		local x y
-		eval "$(xdotool getwindowgeometry --shell "${wid}")"
-		x=$((WIDTH / 2))
-		y=$((HEIGHT / 2))
-		xdotool mousemove --window "${wid}" "${x}" "${y}"
-		sleep 0.05
-		xdotool click --window "${wid}" 1
-	fi
+	sleep 0.2
+	x11_id_for "${wid}" >/dev/null
 }
 
-# Send one emulated Wiimote button/key to a focused Dolphin window.
-tap() {
-	local wid="$1" key="$2"
-	window_activate "${wid}"
-	sleep 0.1
-	if [[ "${INPUT_BACKEND}" == ydotool ]]; then
-		input_key "${key}"
-	else
-		xdotool key --window "${wid}" --clearmodifiers "${key}"
-	fi
+# Wiimote A = mouse left click (seeded profile). Dolphin is XWayland: use xdotool.
+tap_a() {
+	local wid="$1" xid x y
+	focus_game "${wid}"
+	xid="$(x11_id_for "${wid}")"
+	eval "$(xdotool getwindowgeometry --shell "${xid}")"
+	x=$((WIDTH / 2))
+	y=$((HEIGHT / 2))
+	xdotool mousemove --window "${xid}" "${x}" "${y}"
+	sleep 0.05
+	xdotool click --window "${xid}" 1
+	sleep 0.08
 }
 
-# Title -> license -> main menu -> Nintendo WFC -> 1 Player.
-# Assumes an existing license (rksys.dat). Main menu order is Single Player,
-# Multiplayer, Nintendo WFC. 1 Player is the default under Nintendo WFC.
-open_nintendo_wfc() {
-	local wid="$1" label="$2"
-	local i
-
-	echo "menu navigate ${label} (wid=${wid})"
-	window_activate "${wid}"
-
-	for ((i = 0; i < SKIP_AS; i++)); do
-		tap_a "${wid}"
-		sleep 2
-	done
-
-	# Title "Press A Button"
-	tap_a "${wid}"
-	sleep 3
-
-	# License select (first / only license)
-	tap_a "${wid}"
-	sleep 5
-
-	# Main menu: Single Player -> Multiplayer -> Nintendo WFC
-	tap "${wid}" Down
-	sleep 0.4
-	tap "${wid}" Down
-	sleep 0.9
-
-	# Nintendo WFC: 1 Player is highlighted by default
-	tap_a "${wid}"
-	sleep 1
-	echo "menu navigate ${label}: sent Nintendo WFC 1 Player"
+# Nudge emulated IR via mouse (Cursor X/Y in seeded Wiimote profile).
+ir_nudge() {
+	local wid="$1" dx="$2" dy="$3" xid
+	focus_game "${wid}"
+	xid="$(x11_id_for "${wid}")"
+	xdotool mousemove_relative --window "${xid}" "${dx}" "${dy}"
+	sleep 0.15
 }
 
+# Drive both windows: skip health/logos/title -> license -> Nintendo WFC.
 open_nintendo_wfc_both() {
 	local wid1="$1" wid2="$2"
+	local i nudge="${IR_NUDGE}"
 
 	if ((BOOT_WAIT > 0)); then
-		echo "waiting ${BOOT_WAIT}s for title screens (MKWII_BOOT_WAIT)..."
+		echo "waiting ${BOOT_WAIT}s before automation (MKWII_BOOT_WAIT)..."
 		sleep "${BOOT_WAIT}"
 	fi
-	open_nintendo_wfc "${wid1}" "P1"
-	open_nintendo_wfc "${wid2}" "P2"
+
+	echo "menu navigate both: ${SKIP_AS} skip-A @ ${A_INTERVAL}s (mouse click)"
+	for ((i = 0; i < SKIP_AS; i++)); do
+		tap_a "${wid1}"
+		tap_a "${wid2}"
+		sleep "${A_INTERVAL}"
+	done
+
+	echo "license A (mouse click)"
+	tap_a "${wid1}"
+	tap_a "${wid2}"
+	sleep 2.5
+
+	echo "IR to Nintendo WFC + A (mouse nudge ${nudge}px)"
+	for wid in "${wid1}" "${wid2}"; do
+		ir_nudge "${wid}" 0 "${nudge}"
+		ir_nudge "${wid}" 0 "${nudge}"
+		ir_nudge "${wid}" "-${nudge}" 0
+		ir_nudge "${wid}" "-${nudge}" 0
+	done
+	sleep 0.3
+	tap_a "${wid1}"
+	tap_a "${wid2}"
+	sleep 0.8
 	echo "Nintendo WFC open attempted on both windows"
 }
 
-# Menu automation only: find two open MKW windows and drive Nintendo WFC.
+# Menu automation on two already-open MKW windows.
 run_auto() {
 	init_backends
 	local -a wids=()
-
-	# Keep on-disk bindings ready for the next launch (running Dolphin will
-	# not reload mid-session).
-	seed_controllers "${USER_ROOT}/p1"
-	seed_controllers "${USER_ROOT}/p2"
+	local -a xids=()
 
 	mapfile -t wids < <(mkw_pair_ids) || true
 	if ((${#wids[@]} < 2)); then
 		die "need 2 open Mario Kart Wii windows (found ${#wids[@]})"
 	fi
-	echo "using open windows: P1=${wids[0]} P2=${wids[1]}"
+	mapfile -t xids < <(mkw_x11_ids_ltr) || true
+	if ((${#xids[@]} < 2)); then
+		die "need 2 X11 Mario Kart Wii windows for xdotool input (found ${#xids[@]})"
+	fi
+	echo "backends: window=${WINDOW_BACKEND} input=xdotool-mouse"
+	echo "using open windows: P1=${wids[0]} (x11=${xids[0]}) P2=${wids[1]} (x11=${xids[1]})"
 	open_nintendo_wfc_both "${wids[0]}" "${wids[1]}"
 }
 
 [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]] && usage
 
 if [[ "${1:-}" == "auto" || "${1:-}" == "--auto" || "${1:-}" == "wfc" || "${1:-}" == "--wfc" ]]; then
-	# Already-open pair: no boot wait unless the user sets MKWII_BOOT_WAIT.
+	# Already-open pair: start clicking immediately (no boot wait unless set).
 	if [[ -z "${MKWII_BOOT_WAIT:-}" ]]; then
 		BOOT_WAIT=0
 	fi
@@ -645,7 +842,8 @@ launch() {
 echo "ISO: ${ISO}"
 echo "users: ${U1} , ${U2}"
 launch "${U1}" "P1" "00:17:ab:ca:ac:f1"
-sleep 1
+# Short gap only so both stay close on boot / title timing.
+sleep 0.2
 launch "${U2}" "P2" "00:17:ab:ca:ac:f2"
 
 echo "waiting for game windows..."
@@ -657,7 +855,13 @@ place_windows "${WIDS[0]}" "${WIDS[1]}"
 	place_windows "${WIDS[0]}" "${WIDS[1]}"
 ) &
 echo "floating windows ready (left monitor, side by side, muted)"
-echo "Ctrl+C stops both. Run 'just auto' to open Nintendo WFC menus."
+if [[ "${MKWII_AUTO:-1}" != 0 ]]; then
+	echo "running menu automation (mouse IR + click)..."
+	open_nintendo_wfc_both "${WIDS[0]}" "${WIDS[1]}"
+else
+	echo "menu automation skipped (MKWII_AUTO=0). Run: just auto"
+fi
+echo "Ctrl+C stops both."
 
 while kill -0 "${PIDS[0]}" 2>/dev/null || kill -0 "${PIDS[1]}" 2>/dev/null; do
 	sleep 1

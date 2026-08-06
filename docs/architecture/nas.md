@@ -4,14 +4,14 @@ First hop for Wi-Fi Connection. The Wii creates an account or logs in here,
 receives an auth token, and learns where the other online services live.
 
 Package: `internal/nas`  
-Config: `[NasServer]` (default `0.0.0.0:9000`)  
+Config: `[NasServer]` (default `0.0.0.0:80`)  
 Protocol: HTTP over TCP
 
 ## What it is
 
 NAS is the first stop when a Wii connects to Nintendo Wi-Fi Connection. It
 handles account creation, login tokens, and service location. Retail Mario Kart
-Wii talks to hostnames such as `naswii.nintendowifi.net`.
+Wii talks to hostnames such as `naswii.nintendowifi.net` on port 80.
 
 This build speaks **plain HTTP**. Retail clients build `https://` URLs, so you
 need NoSSL (Gecko code or USB Loader GX Private Server set to NoSSL).
@@ -58,20 +58,22 @@ Clients usually hit NAS through DNS spoofing:
 - `naswii.nintendowifi.net`
 - `nas.nintendowifi.net`
 
-With [`--proxy-bind :80`](proxy.md), those Host headers on port 80 are forwarded
-to this backend on port 9000. Without the proxy, expose `:9000` directly.
+Default `[NasServer] Port = 80` matches what retail clients dial. Binding port
+80 usually needs `sudo` or `CAP_NET_BIND_SERVICE`. If you put NAS on another
+port, use [`--proxy-bind`](proxy.md) (or an external reverse proxy) so clients
+still reach something on 80.
 
 ## Logs / health
 
 ```shell
-curl http://127.0.0.1:9000/   # -> ok
+curl -H "Host: naswii.nintendowifi.net" http://127.0.0.1/   # -> ok
 ```
 
 When `[Logging]` `Nas = true` (default), expect lines like these on first Wii
 connect (timestamps and colors depend on `[Logging]`):
 
 ```
-INFO  nas     listening on :9000
+INFO  nas     listening on :80
 INFO  nas     acctcreate userid=1234567890123 gamecd=RMCE ip=192.168.1.50
 INFO  nas     login userid=1234567890123 gamecd=RMCE ip=192.168.1.50
 INFO  nas     svcloc userid=1234567890123 gamecd=RMCE ip=192.168.1.50
@@ -84,6 +86,6 @@ There is no HTML admin UI on this port.
 
 ## Related
 
-- [Proxy](proxy.md) - optional front door on port 80
+- [Proxy](proxy.md) - optional front door when NAS is not on port 80
 - [Profile](profile.md) - validates the NAS authtoken
 - [Database](database.md) - stores tokens and bans

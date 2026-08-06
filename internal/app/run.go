@@ -28,7 +28,7 @@ import (
 
 func Run() {
 	cfgPath := flag.String("config", "mkw-dwc.ini", "path to mkw-dwc.ini")
-	proxyBind := flag.String("proxy-bind", "", "optional HTTP reverse proxy bind address (e.g. :80)")
+	proxyBind := flag.String("proxy-bind", "", "optional reverse proxy when NAS is not on port 80 (e.g. :80)")
 	flag.Parse()
 
 	cfg, err := config.Load(*cfgPath)

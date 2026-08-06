@@ -31,14 +31,14 @@ also need a **NoSSL** Gecko code in Dolphin (step later).
 From the repo root:
 
 ```shell
-sudo go run . --config mkw-dwc.ini --proxy-bind :80
+sudo go run . --config mkw-dwc.ini
 ```
 
 `sudo` is only so the process can bind port 80. Retail clients expect NAS on
-port 80. The proxy forwards those hostnames to NAS on 9000.
+port 80. Default `[NasServer] Port = 80` serves them directly (no proxy).
 
 Leave this terminal open. You should see startup lines for `nas`, `profile`,
-`gpsp`, `qr`, `browser`, `natneg`, and `proxy`.
+`gpsp`, `qr`, `browser`, and `natneg`.
 
 ### Port 80 already in use
 
@@ -64,11 +64,10 @@ Then run step 1 again. Start the other service again when you are done testing
 In a second terminal:
 
 ```shell
-curl http://127.0.0.1:9000/
 curl -H "Host: naswii.nintendowifi.net" http://127.0.0.1/
 ```
 
-Both should print `ok`.
+It should print `ok`.
 
 ## 3. Hosts file
 
@@ -159,30 +158,32 @@ just test "/home/econn/data/Emulation/roms/wii/Mario Kart Wii.iso"
 # or: MKWII_ISO=/path/to/MKWii.iso just test
 ```
 
-After both windows appear, run menu automation separately:
+After both windows appear, `just test` runs menu automation automatically (mouse
+click for A, mouse nudge for IR). Or run it on already-open windows:
 
 ```shell
 just auto
 # or: ./scripts/test-mkwii.sh auto
 ```
 
-That presses on each window: title A -> license A -> Down Down (Nintendo WFC) -> A (1
-Player). Needs an existing license on each save (create one once if the slots are
-empty).
+That clicks A early to skip the health warning / logos / title (about 18 clicks at
+0.7s), then license A, then IR to Nintendo WFC and A (1 Player). Needs an existing
+license on each save (create one once if the slots are empty).
 
 Tune automation with env:
 
 ```shell
-MKWII_BOOT_WAIT=50 just auto        # slower boot / longer intro
-MKWII_SKIP_AS=2 just auto           # extra A to skip logos
+MKWII_SKIP_AS=24 just test          # more skip clicks if still in logos
+MKWII_A_INTERVAL=0.5 just test      # faster skip clicks
+MKWII_BOOT_WAIT=5 just test         # optional delay before first click
+MKWII_IR_NUDGE=100 just test        # IR nudge pixels for Nintendo WFC menu
+MKWII_AUTO=0 just test              # launch only, no menu automation
 ```
 
-`just auto` defaults to no boot wait. On Wayland it uses Cinnamon window focus plus
-`ydotool` for clicks and keys (needs `ydotoold` running). `just test` copies your
-Flatpak Dolphin controller profile (`WiimoteNew.ini`, `GCPadNew.ini`) into each
-isolated user dir and ensures Wiimote A also includes mouse left click for
-automation. Override the source with `MKWII_CONTROLLER_CONFIG` if needed. Ctrl+C
-stops both. Watch the `mkw-dwc` terminal for NAS, profile, and gpsp traffic.
+Automation uses Cinnamon window focus plus xdotool mouse (Wiimote A = left click,
+IR = cursor nudge). `just test` seeds Wiimote with mouse IR (`Cursor X/Y`) and
+copies your Flatpak GCPad with keyboard OR. Relaunch after bind changes.
+Ctrl+C stops both. Watch the `mkw-dwc` terminal for NAS, profile, and gpsp traffic.
 
 ### Still getting 20100?
 
@@ -199,7 +200,7 @@ see 20100:
 ### Still getting 23400?
 
 - Confirm NoSSL is actually running (Enable Cheats + Gecko checked)
-- Confirm `--proxy-bind :80` and health checks return `ok`
+- Confirm NAS is listening on port 80 and health checks return `ok`
 - Restart `mkw-dwc` from a build that includes the duplicate-Host fix
   (`internal/httpfix`). MKW/Dolphin send `Host` twice. Older builds return
   HTTP 400 for those requests

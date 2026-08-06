@@ -12,9 +12,9 @@ hosts-uninstall:
 	./scripts/hosts.sh uninstall
 
 run:
-	sudo go run . --config mkw-dwc.ini --proxy-bind :80
+	sudo go run . --config mkw-dwc.ini
 
-# Two muted batch Dolphin windows (NoSSL + cheats) for local WFC testing.
+# Two muted batch Dolphin windows (NoSSL + cheats), then mouse menu automation.
 test iso=iso:
 	#!/usr/bin/env bash
 	set -euo pipefail
