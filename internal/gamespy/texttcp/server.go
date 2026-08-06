@@ -36,6 +36,7 @@ func Serve(ctx context.Context, addr, logComponent string, handle func(net.Conn)
 			logging.For(logComponent).Warnf("accept: %v", err)
 			continue
 		}
+		logging.For(logComponent).Debugf("connection from=%s", conn.RemoteAddr())
 		go handle(conn)
 	}
 }

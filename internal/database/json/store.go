@@ -12,7 +12,10 @@ import (
 	"sync"
 
 	"github.com/IrishBruse/mkw-dwc/internal/database"
+	"github.com/IrishBruse/mkw-dwc/internal/logging"
 )
+
+var storeLog = logging.For("store")
 
 var _ database.Store = (*Store)(nil)
 
@@ -114,7 +117,7 @@ func (s *Store) GetNextAvailableUserid() string {
 	s.nextUserID = id + 1
 	if err := s.persistFileLocked("meta.json", metaRecord{NextUserID: s.nextUserID}); err != nil {
 		// Still return the reserved id; the next load will recompute from data.
-		_ = err
+		storeLog.Warnf("meta persist failed userid=%013d err=%v", id, err)
 	}
 	return fmt.Sprintf("%013d", id)
 }
@@ -150,31 +153,27 @@ func (s *Store) StoreNasLogin(userid, authtoken string, data map[string]string) 
 
 	for _, login := range s.nasLogins {
 		if login.AuthToken == authtoken && login.UserID != userid {
+			storeLog.Warnf("authtoken collision userid=%s", userid)
 			return fmt.Errorf("json: authtoken collision")
 		}
 	}
 
-	gsbrcd := stored["gsbrcd"]
+	// Match dwc_network_server_emulator: one nas_logins row per userid.
+	// A later login replaces the authtoken for that userid.
 	for i := range s.nasLogins {
-		login := &s.nasLogins[i]
-		if login.UserID != userid {
-			continue
+		if s.nasLogins[i].UserID == userid {
+			s.nasLogins[i].AuthToken = authtoken
+			s.nasLogins[i].Data = stored
+			storeLog.Debugf("nas login upsert userid=%s", userid)
+			return s.persistFileLocked("nas_logins.json", s.nasLogins)
 		}
-		// Prefer updating the row for this gsbrcd so two consoles that
-		// accidentally share a userid (race before reservation) can both keep
-		// a live token. Fall back to userid-only when gsbrcd is absent.
-		if gsbrcd != "" && login.Data["gsbrcd"] != gsbrcd {
-			continue
-		}
-		login.AuthToken = authtoken
-		login.Data = stored
-		return s.persistFileLocked("nas_logins.json", s.nasLogins)
 	}
 	s.nasLogins = append(s.nasLogins, nasLoginRecord{
 		UserID:    userid,
 		AuthToken: authtoken,
 		Data:      stored,
 	})
+	storeLog.Debugf("nas login insert userid=%s", userid)
 	return s.persistFileLocked("nas_logins.json", s.nasLogins)
 }
 
@@ -262,11 +261,10 @@ func (s *Store) GetIngameSN(profileID int64) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	var userid, gsbrcd string
+	var userid string
 	for _, u := range s.users {
 		if u.ProfileID == profileID {
 			userid = u.UserID
-			gsbrcd = u.Gsbrcd
 			break
 		}
 	}
@@ -276,9 +274,6 @@ func (s *Store) GetIngameSN(profileID int64) (string, error) {
 
 	for _, login := range s.nasLogins {
 		if login.UserID != userid {
-			continue
-		}
-		if gsbrcd != "" && login.Data["gsbrcd"] != "" && login.Data["gsbrcd"] != gsbrcd {
 			continue
 		}
 		if v, ok := login.Data["ingamesn"]; ok {
@@ -347,6 +342,7 @@ func (s *Store) LoginProfileFromAuth(data map[string]string) (userid string, pro
 		if profileid == 0 {
 			return "", 0, "", "", fmt.Errorf("json: failed to create user")
 		}
+		storeLog.Debugf("login new user userid=%s profileid=%d gsbrcd=%s", userid, profileid, gsbrcd)
 		return userid, profileid, gsbrcd, uniquenick, nil
 	}
 
@@ -354,6 +350,7 @@ func (s *Store) LoginProfileFromAuth(data map[string]string) (userid string, pro
 	if u.Enabled != 1 {
 		return "", 0, "", "", nil
 	}
+	storeLog.Debugf("login existing user userid=%s profileid=%d gsbrcd=%s", userid, u.ProfileID, gsbrcd)
 	return userid, u.ProfileID, gsbrcd, uniquenick, nil
 }
 
@@ -393,6 +390,7 @@ func (s *Store) CreateSession(profileid int64) (sesskey, loginTicket string, err
 	if err := s.persistFileLocked("sessions.json", s.sessions); err != nil {
 		return "", "", err
 	}
+	storeLog.Debugf("session created profileid=%d", profileid)
 	return sesskey, loginTicket, nil
 }
 
@@ -402,12 +400,18 @@ func (s *Store) DeleteSession(sesskey string) error {
 	defer s.mu.Unlock()
 
 	filtered := make([]sessionRecord, 0, len(s.sessions))
+	deleted := false
 	for _, sess := range s.sessions {
 		if sess.Session != sesskey {
 			filtered = append(filtered, sess)
+		} else {
+			deleted = true
 		}
 	}
 	s.sessions = filtered
+	if deleted {
+		storeLog.Debugf("session deleted")
+	}
 	return s.persistFileLocked("sessions.json", s.sessions)
 }
 
@@ -573,14 +577,17 @@ func (s *Store) persistFileLocked(name string, v any) error {
 	path := filepath.Join(s.dir, name)
 	data, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
+		storeLog.Errorf("persist marshal failed file=%s err=%v", name, err)
 		return fmt.Errorf("json: marshal %s: %w", name, err)
 	}
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+		storeLog.Errorf("persist write failed file=%s err=%v", name, err)
 		return fmt.Errorf("json: write %s: %w", name, err)
 	}
 	if err := os.Rename(tmp, path); err != nil {
 		_ = os.Remove(tmp)
+		storeLog.Errorf("persist rename failed file=%s err=%v", name, err)
 		return fmt.Errorf("json: rename %s: %w", name, err)
 	}
 	return nil

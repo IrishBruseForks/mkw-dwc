@@ -154,40 +154,52 @@ With the server already running (`just run`), launch two muted Dolphin clients
 (NoSSL + cheats seeded, settings UI hidden):
 
 ```shell
-just test "/home/econn/data/Emulation/roms/wii/Mario Kart Wii.iso"
-# or: MKWII_ISO=/path/to/MKWii.iso just test
+just launch "/home/econn/data/Emulation/roms/wii/Mario Kart Wii.iso"
+# or: MKWII_ISO=/path/to/MKWii.iso just launch
 ```
 
-After both windows appear, `just test` runs menu automation automatically (mouse
-click for A, mouse nudge for IR). Or run it on already-open windows:
+That opens two tiled windows only (no input automation). Then run menu automation
+on the open pair:
 
 ```shell
 just auto
-# or: ./scripts/test-mkwii.sh auto
+# or: node scripts/automate.js
 ```
 
-That clicks A early to skip the health warning / logos / title (about 18 clicks at
-0.7s), then license A, then IR to Nintendo WFC and A (1 Player). Needs an existing
-license on each save (create one once if the slots are empty).
+Automation uses keyboard only: Wiimote A=`x`, D-pad arrows (no focus switch,
+`BackgroundInput` in seeded Dolphin). Import the API from `scripts/automate.js`
+to build custom flows:
 
-Tune automation with env:
+```javascript
+const { createSession, pressA, dpad, sleep } = require("./scripts/automate");
+
+await createSession();
+await pressA("both", 18, 700);
+await sleep(2500);
+await dpad("both", "Down", 2);
+await dpad("both", "Left", 2);
+await pressA("both");
+```
+
+Tune default `just auto` flow with env:
 
 ```shell
-MKWII_SKIP_AS=24 just test          # more skip clicks if still in logos
-MKWII_A_INTERVAL=0.5 just test      # faster skip clicks
-MKWII_BOOT_WAIT=5 just test         # optional delay before first click
-MKWII_IR_NUDGE=100 just test        # IR nudge pixels for Nintendo WFC menu
-MKWII_AUTO=0 just test              # launch only, no menu automation
+MKWII_SKIP_AS=24 just auto          # more skip presses if still in logos
+MKWII_A_INTERVAL=0.5 just auto      # faster skip presses
+MKWII_BOOT_WAIT=5 just auto           # optional delay before first key
+MKWII_DPAD_DOWN_COUNT=2 just auto     # Down taps to reach WFC row (default: 2)
+MKWII_DPAD_TO_WFC=Left just auto      # horizontal D-pad after Down
+MKWII_DPAD_TO_WFC_COUNT=3 just auto   # horizontal D-pad taps
 ```
 
-Automation uses Cinnamon window focus plus xdotool mouse (Wiimote A = left click,
-IR = cursor nudge). `just test` seeds Wiimote with mouse IR (`Cursor X/Y`) and
-copies your Flatpak GCPad with keyboard OR. Relaunch after bind changes.
-Ctrl+C stops both. Watch the `mkw-dwc` terminal for NAS, profile, and gpsp traffic.
+`just launch` seeds NoSSL, EnableCheats, Wiimote (mouse + keyboard OR), and your
+Flatpak GCPad with keyboard OR into `tmp/dolphin-test/`.
+Ctrl+C on the launch terminal stops both Dolphin instances. Watch the `mkw-dwc`
+terminal for NAS, profile, and gpsp traffic.
 
 ### Still getting 20100?
 
-`just test` seeds NoSSL and EnableCheats into `tmp/dolphin-test/`. If you still
+`just launch` seeds NoSSL and EnableCheats into `tmp/dolphin-test/`. If you still
 see 20100:
 
 - Confirm the server dump log shows plain HTTP, not `TLS handshake` / `NoSSL
@@ -195,7 +207,7 @@ see 20100:
 - Confirm health checks still return `ok` and hosts still resolve to
   `127.0.0.1`
 - Use an unpatched ISO and a fresh license on each test window
-- Delete `tmp/dolphin-test/` and rerun `just test` so GameSettings are reseeded
+- Delete `tmp/dolphin-test/` and rerun `just launch` so GameSettings are reseeded
 
 ### Still getting 23400?
 
@@ -204,6 +216,18 @@ see 20100:
 - Restart `mkw-dwc` from a build that includes the duplicate-Host fix
   (`internal/httpfix`). MKW/Dolphin send `Host` twice. Older builds return
   HTTP 400 for those requests
+
+### Error 61020 and/or 60000 on dual Dolphin?
+
+- **61020**: both clients shared one NAS userid, so the second NAS login
+  replaced the first authtoken. `just launch` seeds distinct
+  `Wii/shared2/DWC_AUTHDATA` (userid 2 and 3) and moves the Flatpak default
+  AUTHDATA aside so both windows cannot pick up the same id.
+- **60000**: license still has an old Friend Code / profile id. `just launch`
+  wipes `rksys.dat` so each window creates a fresh license (no Friend Code).
+  Do not hex-edit the save, that corrupts checksums.
+- After fixing identities, clear `data/nas_logins.json` (or the whole `data/`
+  dir) and reconnect so tokens match the new AUTHDATA files.
 
 ### Stuck on "Connecting to Nintendo WFC..."?
 

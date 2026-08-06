@@ -283,6 +283,9 @@ func (sess *connSession) findServer(queryGame, filter string, fields []string, m
 		return
 	}
 	logging.For("browser").Infof("returning %d room(s) for game=%q", len(results), queryGame)
+	if len(results) == 0 && filter != "" {
+		logging.For("browser").Debugf("zero rooms matched game=%q filter=%q", queryGame, filter)
+	}
 	for i, result := range results {
 		fm := result.Record.AsMap()
 		logging.For("browser").Debugf(

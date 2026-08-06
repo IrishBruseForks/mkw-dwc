@@ -23,7 +23,9 @@ type Settings struct {
 	Natneg     bool
 	Proxy      bool
 	App        bool
-	LogFile string // optional mirror of user-facing logs (empty = stderr only)
+	Store      bool
+	Backend    bool
+	LogFile string // optional mirror of user-facing logs (empty = stderr only); truncated on Init
 }
 
 type level int
@@ -55,6 +57,8 @@ var (
 		"natneg":  true,
 		"proxy":   true,
 		"app":     true,
+		"store":   true,
+		"backend": true,
 	}
 	out     io.Writer = os.Stderr
 	fileOut io.Writer
@@ -110,7 +114,7 @@ func Init(s Settings) error {
 				return fmt.Errorf("logging: create log dir %q: %w", dir, err)
 			}
 		}
-		f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+		f, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
 		if err != nil {
 			return fmt.Errorf("logging: open log file %q: %w", path, err)
 		}
@@ -141,6 +145,8 @@ func Init(s Settings) error {
 	components["natneg"] = s.Natneg
 	components["proxy"] = s.Proxy
 	components["app"] = s.App
+	components["store"] = s.Store
+	components["backend"] = s.Backend
 
 	return nil
 }

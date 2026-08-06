@@ -176,6 +176,7 @@ func (s *Server) handlePacket(recvData []byte, addr net.UDPAddr) {
 
 	if cmd != 0x09 {
 		if len(recvData) < 5 {
+			logging.For("qr").Debugf("short packet cmd=0x%02x from=%s len=%d", cmd, addr.String(), len(recvData))
 			return
 		}
 		sessionID = binary.LittleEndian.Uint32(recvData[1:5])
@@ -202,7 +203,7 @@ func (s *Server) handlePacket(recvData []byte, addr net.UDPAddr) {
 	case 0x03:
 		s.handleHeartbeat(sessionID, sessionIDRaw, recvData, addr)
 	case 0x07:
-		// Client message ack for FE FD 06 (Python logs at DEBUG only).
+		logging.For("qr").Debugf("client message ack session=%08x from=%s", sessionID, addr.String())
 	case 0x08:
 		// keepalive refresh already applied above
 	case 0x09:
@@ -213,11 +214,13 @@ func (s *Server) handlePacket(recvData []byte, addr net.UDPAddr) {
 }
 
 func (s *Server) handleAvailability(recvData []byte, addr net.UDPAddr) {
+	logging.For("qr").Debugf("availability from=%s len=%d", addr.String(), len(recvData))
 	s.queueWrite([]byte{0xfe, 0xfd, 0x09, 0x00, 0x00, 0x00, 0x00}, addr)
 }
 
 func (s *Server) handleChallengeResponse(sessionID uint32, recvData []byte, addr net.UDPAddr) {
 	if len(recvData) < 6 {
+		logging.For("qr").Debugf("challenge response short session=%08x from=%s len=%d", sessionID, addr.String(), len(recvData))
 		return
 	}
 
@@ -225,6 +228,7 @@ func (s *Server) handleChallengeResponse(sessionID uint32, recvData []byte, addr
 	sess, ok := s.sessions[sessionID]
 	if !ok {
 		s.mu.Unlock()
+		logging.For("qr").Debugf("challenge response unknown session=%08x from=%s", sessionID, addr.String())
 		return
 	}
 	secretkey := sess.secretkey
@@ -257,6 +261,7 @@ func (s *Server) handleChallengeResponse(sessionID uint32, recvData []byte, addr
 	packet[1] = 0xfd
 	packet[2] = 0x0a
 	binary.LittleEndian.PutUint32(packet[3:], sessionID)
+	logging.For("qr").Debugf("challenge ok session=%08x from=%s sending=0x0a", sessionID, addr.String())
 	s.queueWrite(packet, addr)
 
 	if heartbeatData != nil {
@@ -266,6 +271,7 @@ func (s *Server) handleChallengeResponse(sessionID uint32, recvData []byte, addr
 
 func (s *Server) handleHeartbeat(sessionID uint32, sessionIDRaw []byte, recvData []byte, addr net.UDPAddr) {
 	if len(recvData) < 6 {
+		logging.For("qr").Debugf("heartbeat short session=%08x from=%s len=%d", sessionID, addr.String(), len(recvData))
 		return
 	}
 
@@ -275,6 +281,7 @@ func (s *Server) handleHeartbeat(sessionID uint32, sessionIDRaw []byte, recvData
 	sess, ok := s.sessions[sessionID]
 	if !ok {
 		s.mu.Unlock()
+		logging.For("qr").Debugf("heartbeat unknown session=%08x from=%s", sessionID, addr.String())
 		return
 	}
 
@@ -363,6 +370,7 @@ func (s *Server) handleHeartbeat(sessionID uint32, sessionIDRaw []byte, recvData
 	copy(packet[3:], sessionIDRaw)
 	copy(packet[7:], serverChallenge)
 	packet[len(packet)-1] = 0
+	logging.For("qr").Debugf("challenge issued session=%08x from=%s opcode=0x01 len=%d", sessionID, addr.String(), len(packet))
 	s.queueWrite(packet, addr)
 }
 

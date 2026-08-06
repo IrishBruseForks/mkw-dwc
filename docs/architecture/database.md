@@ -53,6 +53,11 @@ QR / browser / NATNEG do **not** use this store for rooms.
 
 - Paths are relative to the process working directory unless absolute
 - Deleting the data directory forces fresh accounts
+- Dual local Dolphin clients that already share one NAS userid (both
+  `Wii/shared2/DWC_AUTHDATA` contain the same id) must get distinct AUTHDATA
+  files (`just launch` seeds userid 2 and 3) or delete those files so each
+  client runs `acctcreate` again under the reserved counter. Also wipe
+  `rksys.dat` for a fresh license (no Friend Code) so error 60000 cannot fire.
 
 ## Related
 

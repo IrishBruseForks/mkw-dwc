@@ -155,6 +155,25 @@ func TestSetDumpFileCreatesParentDir(t *testing.T) {
 	}
 }
 
+func TestSetDumpFileTruncates(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "traffic.log")
+	if err := os.WriteFile(path, []byte("stale dump\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := httpfix.SetDumpFile(path); err != nil {
+		t.Fatalf("SetDumpFile: %v", err)
+	}
+	t.Cleanup(func() { _ = httpfix.SetDumpFile("") })
+
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(body) != 0 {
+		t.Fatalf("expected truncate on open, got %q", body)
+	}
+}
+
 func TestWrapListenerKeepAliveDedupeHost(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {

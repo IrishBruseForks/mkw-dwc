@@ -254,7 +254,7 @@ async function cmdSetup(args) {
 	log("  1. just hosts                      install /etc/hosts aliases");
 	log("  2. scripts/local.js run            start mkw-dwc");
 	log("  3. scripts/local.js health         verify (while server runs)");
-	log("  4. just test /path/to/MKWii.iso   two NoSSL Dolphin clients");
+	log("  4. just launch /path/to/MKWii.iso   two NoSSL Dolphin clients");
 	log("  5. MKWii -> Nintendo WFC -> Wi-Fi Connection");
 	log("");
 	log("undo hosts: just hosts-uninstall");
@@ -282,7 +282,7 @@ Quick start:
   scripts/local.js run
   # other terminal:
   scripts/local.js health
-  just test /path/to/MKWii.iso`);
+  just launch /path/to/MKWii.iso`);
 }
 
 async function main() {

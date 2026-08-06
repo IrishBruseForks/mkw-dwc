@@ -87,7 +87,7 @@ func (s *Server) handleAC(w http.ResponseWriter, r *http.Request) {
 	}
 	post, err := readPost(r)
 	if err != nil {
-		logging.For("nas").Warnf("bad POST")
+		logging.For("nas").Warnf("bad POST: %v", err)
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
@@ -109,6 +109,12 @@ func (s *Server) handleAC(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ret["datetime"] = time.Now().Format("20060102150405")
+	userid := ret["userid"]
+	if userid == "" {
+		userid = post["userid"]
+	}
+	logging.For("nas").Debugf("ac response action=%s returncd=%s retry=%s userid=%s svc=%s",
+		action, ret["returncd"], ret["retry"], userid, post["svc"])
 	writeNASResponse(w, dictToQS(ret))
 }
 
@@ -134,6 +140,8 @@ func (s *Server) handlePR(w http.ResponseWriter, r *http.Request) {
 	for _, suffix := range "ACEJKP" {
 		ret["prwords"+string(suffix)] = wordsRet
 	}
+	logging.For("nas").Debugf("pr request words=%d", words)
+	logging.For("nas").Debugf("pr response returncd=%s", ret["returncd"])
 	writeNASResponse(w, dictToQS(ret))
 }
 

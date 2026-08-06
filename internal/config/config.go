@@ -109,6 +109,8 @@ func (c *Config) LoggingSettings() (logging.Settings, error) {
 		Natneg:     true,
 		Proxy:      true,
 		App:        true,
+		Store:      true,
+		Backend:    true,
 	}
 
 	sec, ok := c.sections["Logging"]
@@ -160,6 +162,12 @@ func (c *Config) LoggingSettings() (logging.Settings, error) {
 		return logging.Settings{}, err
 	}
 	if s.App, err = parseLoggingBool(sec, "App", true); err != nil {
+		return logging.Settings{}, err
+	}
+	if s.Store, err = parseLoggingBool(sec, "Store", true); err != nil {
+		return logging.Settings{}, err
+	}
+	if s.Backend, err = parseLoggingBool(sec, "Backend", true); err != nil {
 		return logging.Settings{}, err
 	}
 	if v, ok := sec["LogFile"]; ok {

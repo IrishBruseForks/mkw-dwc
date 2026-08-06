@@ -239,7 +239,8 @@ func TestGetNextAvailableUseridReservesUniqueIDs(t *testing.T) {
 	}
 }
 
-func TestStoreNasLoginSameUseridDifferentGsbrcd(t *testing.T) {
+func TestStoreNasLoginSameUseridOverwritesToken(t *testing.T) {
+	// Match dwc_network_server_emulator: one active authtoken per userid.
 	dir := t.TempDir()
 	s, err := jsonstore.Open(dir)
 	if err != nil {
@@ -262,14 +263,17 @@ func TestStoreNasLoginSameUseridDifferentGsbrcd(t *testing.T) {
 	}
 
 	gotA, err := s.GetNasLogin("token-a")
-	if err != nil || gotA == nil {
-		t.Fatalf("get token-a: %v %#v", err, gotA)
+	if err != nil {
+		t.Fatalf("get token-a: %v", err)
+	}
+	if gotA != nil {
+		t.Fatalf("old token should be replaced, got %#v", gotA)
 	}
 	gotB, err := s.GetNasLogin("token-b")
 	if err != nil || gotB == nil {
 		t.Fatalf("get token-b: %v %#v", err, gotB)
 	}
-	if gotA["gsbrcd"] != "RMCJaaaaaaaa" || gotB["gsbrcd"] != "RMCJbbbbbbbb" {
-		t.Fatalf("gsbrcd mismatch a=%q b=%q", gotA["gsbrcd"], gotB["gsbrcd"])
+	if gotB["gsbrcd"] != "RMCJbbbbbbbb" {
+		t.Fatalf("gsbrcd = %q", gotB["gsbrcd"])
 	}
 }

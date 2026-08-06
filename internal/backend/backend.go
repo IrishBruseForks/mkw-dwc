@@ -114,9 +114,11 @@ func (b *Backend) UpdateServerList(gameid string, session uint32, fields map[str
 	}
 	if idx, ok := idxMap[session]; ok {
 		b.serverList[gameid][idx] = rec
+		logging.For("backend").Debugf("room upsert gamename=%s session=%08x update=true", gameid, session)
 	} else {
 		b.serverList[gameid] = append(b.serverList[gameid], rec)
 		idxMap[session] = len(b.serverList[gameid]) - 1
+		logging.For("backend").Debugf("room upsert gamename=%s session=%08x update=false", gameid, session)
 	}
 	return nil
 }
@@ -137,6 +139,8 @@ func (b *Backend) deleteServerLocked(gameid string, session uint32) {
 	if !ok {
 		return
 	}
+
+	logging.For("backend").Debugf("room deleted gamename=%s session=%08x", gameid, session)
 
 	servers := b.serverList[gameid]
 	servers = append(servers[:idx], servers[idx+1:]...)
@@ -181,6 +185,7 @@ func (b *Backend) FindServers(gameid, filter string, fields []string, maxCount i
 			break
 		}
 	}
+	logging.For("backend").Debugf("find servers gamename=%s filter_len=%d rooms=%d matched=%d", gameid, len(filter), len(servers), len(matched))
 	return matched, nil
 }
 
@@ -289,6 +294,7 @@ func (b *Backend) AddNatnegServer(cookie uint32, server map[string]string) {
 		return
 	}
 	b.natnegList[cookie] = append(entries, server)
+	logging.For("backend").Debugf("natneg add cookie=%08x publicip=%s publicport=%s", cookie, publicIP, publicPort)
 }
 
 // GetNatnegServer returns NATNEG entries for cookie, or nil if none exist.
@@ -314,7 +320,10 @@ func (b *Backend) GetNatnegServer(cookie uint32) []map[string]string {
 func (b *Backend) DeleteNatnegServer(cookie uint32) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	delete(b.natnegList, cookie)
+	if _, ok := b.natnegList[cookie]; ok {
+		delete(b.natnegList, cookie)
+		logging.For("backend").Debugf("natneg deleted cookie=%08x", cookie)
+	}
 }
 
 func buildServerResult(rec ServerRecord, fields []string) ServerResult {

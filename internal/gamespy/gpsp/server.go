@@ -33,6 +33,8 @@ type connSession struct {
 func (s *Server) handleConn(conn net.Conn) {
 	defer conn.Close()
 
+	logging.For("gpsp").Debugf("connection from=%s", conn.RemoteAddr())
+
 	sess := &connSession{
 		server: s,
 		conn:   conn,
@@ -63,6 +65,7 @@ func (s *connSession) performOtherslist(cmd map[string]string) {
 		count = len(strings.Split(opids, "|"))
 	}
 	logging.For("gpsp").Infof("otherslist from %s opids=%d", s.conn.RemoteAddr(), count)
+	logging.For("gpsp").Debugf("otherslist reply from=%s opids=%d len=%d", s.conn.RemoteAddr(), count, len(msg))
 
 	_, _ = s.conn.Write(msg)
 }

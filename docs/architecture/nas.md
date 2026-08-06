@@ -40,9 +40,15 @@ Typical first-connect flow:
 
 ### `/ac` actions
 
-- **`acctcreate`**: returns a new userid (`returncd=002`) unless the IP is banned (`3913`)
-- **`login`**: stores NAS login data, returns `token` (authtoken) and `challenge` (`returncd=001`)
-- **`svcloc`**: returns `svchost` / tokens for service codes such as `9000` / `9001`
+- **`acctcreate`**: reserves and returns a new userid (`returncd=002`) unless
+  the IP is banned (`3913`). Unlike the Python reference, each call persists
+  the next userid immediately so concurrent Dolphin clients cannot receive the
+  same ID before either has a profile row.
+- **`login`**: stores NAS login data, returns `token` (authtoken) and
+  `challenge` (`returncd=001`). One active token per userid (same as the
+  reference): a later login replaces the previous token.
+- **`svcloc`**: returns `svchost` / tokens for service codes such as `9000` /
+  `9001`
 
 Responses are Nintendo-style query strings with base64-ish encoding (`=` becomes `*`).
 

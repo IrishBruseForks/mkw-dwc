@@ -60,6 +60,27 @@ func TestLevelFilteringSuppressesDebugAtInfo(t *testing.T) {
 	}
 }
 
+func TestDisabledStoreComponentProducesNoOutput(t *testing.T) {
+	out := captureOutput(t, func() {
+		if err := Init(Settings{
+			Level:      "debug",
+			Color:      "never",
+			Timestamps: false,
+			Store:      false,
+		}); err != nil {
+			t.Fatal(err)
+		}
+		For("store").Infof("should not appear")
+	})
+
+	if out != "" {
+		t.Fatalf("disabled store component should produce no output, got %q", out)
+	}
+	if For("store") != noop {
+		t.Fatal("For(store) with Store=false should return noop logger")
+	}
+}
+
 func TestDisabledComponentProducesNoOutput(t *testing.T) {
 	out := captureOutput(t, func() {
 		if err := Init(Settings{
@@ -172,5 +193,38 @@ func TestLogFileMirrorsConsole(t *testing.T) {
 	}
 	if strings.Contains(string(body), "\033") {
 		t.Fatalf("log file should be plain text, got %q", body)
+	}
+}
+
+func TestLogFileTruncatesOnInit(t *testing.T) {
+	resetForTest()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "app.log")
+	if err := os.WriteFile(path, []byte("stale line\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Init(Settings{
+		Level:      "info",
+		Color:      "never",
+		Timestamps: false,
+		App:        true,
+		LogFile:    path,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = Init(Settings{Level: "info", Color: "never"}) })
+
+	For("app").Infof("fresh line")
+
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(body), "stale line") {
+		t.Fatalf("expected truncate on init, got %q", body)
+	}
+	if !strings.Contains(string(body), "fresh line") {
+		t.Fatalf("expected fresh line, got %q", body)
 	}
 }

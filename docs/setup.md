@@ -90,6 +90,8 @@ Browser = true # server browser
 Natneg = true # NAT negotiation
 Proxy = true # reverse proxy (only if --proxy-bind is set)
 App = true # startup and lifecycle
+Store = true # JSON account store logs
+Backend = true # in-memory room/NATNEG registry logs
 LogFile = # mirror stderr INFO/WARN/ERROR lines (empty to disable)
 DumpFile = # raw NAS/proxy TCP dumps (empty to disable; set a path to debug 20100/23400)
 

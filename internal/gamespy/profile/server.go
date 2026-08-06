@@ -68,6 +68,8 @@ func (s *connSession) sendLoginChallenge() error {
 
 func (s *connSession) dispatch(chunk []byte) {
 	for _, cmd := range s.frames.Consume(chunk) {
+		logging.For("profile").Debugf("inbound cmd=%s id=%s from=%s",
+			cmd["__cmd__"], cmd["id"], s.conn.RemoteAddr())
 		switch cmd["__cmd__"] {
 		case "login":
 			s.performLogin(cmd)
@@ -111,12 +113,14 @@ func (s *connSession) performLogin(cmd map[string]string) {
 
 	userid, profileid, _, uniquenick, err := s.server.DB.LoginProfileFromAuth(authData)
 	if err != nil || profileid == 0 {
+		logging.For("profile").Warnf("login profile from auth failed from %s: %v", s.conn.RemoteAddr(), err)
 		s.writeError("256", "Login failed.", cmd["id"])
 		return
 	}
 
 	sesskey, loginTicket, err := s.server.DB.CreateSession(profileid)
 	if err != nil {
+		logging.For("profile").Errorf("create session profileid=%d: %v", profileid, err)
 		s.writeError("256", "Login failed.", cmd["id"])
 		return
 	}
@@ -220,6 +224,7 @@ func (s *connSession) performStatus(cmd map[string]string) {
 }
 
 func (s *connSession) performKA() {
+	logging.For("profile").Debugf("keepalive profileid=%d", s.profileid)
 	msg := gamespy.CreateGameSpyMessage(map[string]string{
 		"__cmd__":     "ka",
 		"__cmd_val__": "",
@@ -233,7 +238,7 @@ func (s *connSession) performLogout(cmd map[string]string) {
 		sesskey = s.sesskey
 	}
 	if sesskey != "" {
-		logging.For("profile").Infof("logout sesskey=%s", sesskey)
+		logging.For("profile").Infof("logout profileid=%d", s.profileid)
 		_ = s.server.DB.DeleteSession(sesskey)
 		s.sesskey = ""
 	}
@@ -243,6 +248,7 @@ func (s *connSession) performLogout(cmd map[string]string) {
 
 func (s *connSession) cleanup() {
 	if s.sesskey != "" {
+		logging.For("profile").Debugf("disconnect cleanup profileid=%d", s.profileid)
 		_ = s.server.DB.DeleteSession(s.sesskey)
 		s.sesskey = ""
 	}

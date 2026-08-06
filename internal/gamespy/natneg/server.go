@@ -316,6 +316,14 @@ func (s *Server) handleInit(data []byte, addr *net.UDPAddr) {
 	}
 
 	for _, pair := range pairs {
+		logging.For("natneg").Debugf(
+			"connect-pair session=%08x client_a=%d addr_a=%s client_b=%d addr_b=%s serverAddr_a=%t serverAddr_b=%t",
+			sessionID,
+			pair.a.index, pair.a.addr,
+			pair.b.index, pair.b.addr,
+			serverAddrs[pair.a.index] != nil,
+			serverAddrs[pair.b.index] != nil,
+		)
 		s.enqueue(
 			buildConnectPacket(pair.header[:], pair.b.addr, publicPort(serverAddrs[pair.b.index], pair.b.localAddr, pair.b.addr)),
 			pair.a.addr,
@@ -353,6 +361,11 @@ func (s *Server) handleConnectAck(data []byte, addr *net.UDPAddr) {
 }
 
 func (s *Server) handleBackupTest(data []byte, addr *net.UDPAddr) {
+	var sessionID uint32
+	if len(data) >= 12 {
+		sessionID = binary.LittleEndian.Uint32(data[8:12])
+	}
+	logging.For("natneg").Debugf("type=backup from=%s session=%08x len=%d", addr, sessionID, len(data))
 	out := make([]byte, len(data))
 	copy(out, data)
 	out[7] = recBackupAck
@@ -361,8 +374,12 @@ func (s *Server) handleBackupTest(data []byte, addr *net.UDPAddr) {
 
 func (s *Server) handleAddressCheck(data []byte, addr *net.UDPAddr) {
 	if len(data) < 15 {
+		logging.For("natneg").Debugf("type=address_check from=%s len=%d short=true", addr, len(data))
 		return
 	}
+
+	sessionID := binary.LittleEndian.Uint32(data[8:12])
+	logging.For("natneg").Debugf("type=address_check from=%s session=%08x len=%d", addr, sessionID, len(data))
 
 	out := make([]byte, len(data))
 	copy(out, data[:15])
@@ -381,6 +398,11 @@ func (s *Server) handleAddressCheck(data []byte, addr *net.UDPAddr) {
 }
 
 func (s *Server) handleNatify(data []byte, addr *net.UDPAddr) {
+	var sessionID uint32
+	if len(data) >= 12 {
+		sessionID = binary.LittleEndian.Uint32(data[8:12])
+	}
+	logging.For("natneg").Debugf("type=natify from=%s session=%08x len=%d", addr, sessionID, len(data))
 	out := make([]byte, len(data))
 	copy(out, data)
 	out[7] = recERTTest
@@ -389,8 +411,12 @@ func (s *Server) handleNatify(data []byte, addr *net.UDPAddr) {
 
 func (s *Server) handleReport(data []byte, addr *net.UDPAddr) {
 	if len(data) < 21 {
+		logging.For("natneg").Debugf("type=report from=%s len=%d short=true", addr, len(data))
 		return
 	}
+
+	sessionID := binary.LittleEndian.Uint32(data[8:12])
+	logging.For("natneg").Debugf("type=report from=%s session=%08x len=%d", addr, sessionID, len(data))
 
 	out := make([]byte, 21)
 	copy(out, data[:21])
@@ -401,6 +427,7 @@ func (s *Server) handleReport(data []byte, addr *net.UDPAddr) {
 
 func (s *Server) lookupServerAddr(gameID string, sessionID uint32, addr *net.UDPAddr, localAddr backend.LocalAddr) map[string]string {
 	if addr == nil {
+		logging.For("natneg").Debugf("lookupServerAddr miss game=%q session=%08x addr=nil", gameID, sessionID)
 		return nil
 	}
 
@@ -420,6 +447,7 @@ func (s *Server) lookupServerAddr(gameID string, sessionID uint32, addr *net.UDP
 		rec = s.Backend.FindServerByAddress(ipStr, addr.Port, gameID)
 	}
 	if rec == nil {
+		logging.For("natneg").Debugf("lookupServerAddr miss game=%q session=%08x addr=%s", gameID, sessionID, addr)
 		return nil
 	}
 	return rec.AsMap()

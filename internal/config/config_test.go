@@ -157,6 +157,8 @@ Browser = true
 Natneg = false
 Proxy = 1
 App = 0
+Store = false
+Backend = 1
 LogFile = logs/app.log
 DumpFile = logs/traffic.log
 `
@@ -175,12 +177,13 @@ DumpFile = logs/traffic.log
 		t.Fatalf("unexpected level/color/timestamps: %+v", s)
 	}
 	want := struct {
-		Nas, Profile, Gpsp, Qr, Browser, Natneg, Proxy, App bool
-		LogFile                                             string
-	}{false, true, true, false, true, false, true, false, "logs/app.log"}
+		Nas, Profile, Gpsp, Qr, Browser, Natneg, Proxy, App, Store, Backend bool
+		LogFile                                                              string
+	}{false, true, true, false, true, false, true, false, false, true, "logs/app.log"}
 	if s.Nas != want.Nas || s.Profile != want.Profile || s.Gpsp != want.Gpsp || s.Qr != want.Qr ||
 		s.Browser != want.Browser || s.Natneg != want.Natneg || s.Proxy != want.Proxy ||
-		s.App != want.App || s.LogFile != want.LogFile {
+		s.App != want.App || s.Store != want.Store || s.Backend != want.Backend ||
+		s.LogFile != want.LogFile {
 		t.Fatalf("unexpected service flags: got %+v want %+v", s, want)
 	}
 	if cfg.HTTPDumpFile() != "logs/traffic.log" {

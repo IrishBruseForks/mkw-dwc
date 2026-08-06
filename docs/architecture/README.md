@@ -179,7 +179,7 @@ hostname returned during NAS service location (default
 
 Central logger. `Init()` runs once from `[Logging]`. Packages call
 `logging.For("component")` with names like `nas`, `profile`, `gpsp`, `qr`,
-`browser`, `natneg`, `proxy`, `app`. Optional `LogFile` mirrors those lines to a
+`browser`, `natneg`, `proxy`, `app`, `store`, `backend`. Optional `LogFile` mirrors those lines to a
 plain-text file (stderr still gets color when enabled). Optional `DumpFile`
 writes verbose raw NAS/proxy TCP dumps to a separate file via `internal/httpfix`.
 

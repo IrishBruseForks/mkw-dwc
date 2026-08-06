@@ -13,17 +13,22 @@ import (
 )
 
 var (
-	dumpMu  sync.Mutex
-	dumpOut io.Writer
+	dumpMu   sync.Mutex
+	dumpOut  io.Writer
+	dumpFile *os.File
 )
 
 // SetDumpFile enables raw HTTP recv/send dumps written to path.
-// An empty path disables dumps. The file is opened for append.
-// Parent directories are created if missing.
+// An empty path disables dumps. The file is truncated on open so each
+// server start begins with a clean dump. Parent directories are created if missing.
 func SetDumpFile(path string) error {
 	dumpMu.Lock()
 	defer dumpMu.Unlock()
 
+	if dumpFile != nil {
+		_ = dumpFile.Close()
+		dumpFile = nil
+	}
 	dumpOut = nil
 	if path == "" {
 		return nil
@@ -35,10 +40,11 @@ func SetDumpFile(path string) error {
 		}
 	}
 
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
 	if err != nil {
 		return fmt.Errorf("httpfix: open dump file %q: %w", path, err)
 	}
+	dumpFile = f
 	dumpOut = f
 	return nil
 }
