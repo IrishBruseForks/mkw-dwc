@@ -1,19 +1,25 @@
 #!/usr/bin/env node
 // Keyboard automation API for two open MKWii Dolphin windows.
-"use strict";
+// Queue steps with createSession / pressA / dpad / sleep / ..., then await run().
+import { spawnSync } from "node:child_process";
+import { join, dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const { spawnSync } = require("node:child_process");
-
-const REPO_ROOT = require("node:path").join(__dirname, "..");
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = join(__dirname, "..");
 const USER_ROOT =
-	process.env.MKWII_DOLPHIN_DIR ||
-	require("node:path").join(REPO_ROOT, "tmp/dolphin-test");
+	process.env.MKWII_DOLPHIN_DIR || join(REPO_ROOT, "tmp/dolphin-test");
 
 const DPAD_DIRS = new Set(["Left", "Right", "Up", "Down"]);
 const TARGETS = new Set(["p1", "p2", "both"]);
 
 let windowBackend = "x11";
 let activeSession = null;
+const queue = [];
+
+function enqueue(step) {
+	queue.push(step);
+}
 
 function needSession() {
 	if (!activeSession) die("call createSession() first");
@@ -30,7 +36,7 @@ function log(...args) {
 	console.log(...args);
 }
 
-function sleep(ms) {
+function delay(ms) {
 	return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
@@ -162,19 +168,20 @@ function mkwPairIds() {
 	return mkwWidsLtr();
 }
 
-function sendKey(x11Id, key) {
-	capture("xdotool", ["key", "--window", x11Id, "--clearmodifiers", key]);
+function sendKey(x11Id, keyName) {
+	capture("xdotool", ["key", "--window", x11Id, "--clearmodifiers", keyName]);
 }
 
 function readEnv() {
 	return {
-		bootWait: Number(process.env.MKWII_BOOT_WAIT || 0),
-		skipA: Number(process.env.MKWII_SKIP_AS || 18),
-		aInterval: Number(process.env.MKWII_A_INTERVAL || 0.7),
+		bootWait: Number(process.env.MKWII_BOOT_WAIT || 45),
+		phaseWait: Number(process.env.MKWII_PHASE_WAIT || 5),
+		skipA: Number(process.env.MKWII_SKIP_AS || 0),
+		aInterval: Number(process.env.MKWII_A_INTERVAL || 1.5),
 		aKey: process.env.MKWII_A_KEY || "x",
-		dpadDownCount: Number(process.env.MKWII_DPAD_DOWN_COUNT || 2),
+		dpadDownCount: Number(process.env.MKWII_DPAD_DOWN_COUNT || 1),
 		dpadToWfc: process.env.MKWII_DPAD_TO_WFC || "Left",
-		dpadToWfcCount: Number(process.env.MKWII_DPAD_TO_WFC_COUNT || 2),
+		dpadToWfcCount: Number(process.env.MKWII_DPAD_TO_WFC_COUNT || 0),
 	};
 }
 
@@ -191,7 +198,7 @@ async function waitForWindows(timeoutSec = 90) {
 		if (cinnamonIds.length >= 2 && x11Ids.length >= 2) {
 			return { cinnamonIds, x11Ids };
 		}
-		await sleep(1500);
+		await delay(1500);
 	}
 	die(`timed out after ${timeoutSec}s waiting for 2 Mario Kart Wii windows`);
 }
@@ -203,7 +210,7 @@ function resolveTargets(session, target) {
 	return [session.p1.x11Id, session.p2.x11Id];
 }
 
-async function createSession(opts = {}) {
+async function doCreateSession(opts = {}) {
 	const windowWait = Number(
 		opts.windowWait ?? process.env.MKWII_WINDOW_WAIT ?? 0,
 	);
@@ -228,96 +235,101 @@ async function createSession(opts = {}) {
 
 	const aKey = opts.aKey || process.env.MKWII_A_KEY || "x";
 
-	const session = {
+	activeSession = {
 		p1: { cinnamonId: cinnamonIds[0], x11Id: x11Ids[0] },
 		p2: { cinnamonId: cinnamonIds[1], x11Id: x11Ids[1] },
 		aKey,
 	};
-
-	activeSession = session;
-	return session;
+	return activeSession;
 }
 
-async function key(target, keyName) {
+function doKey(target, keyName, quiet = false) {
 	const session = needSession();
 	const xids = resolveTargets(session, target);
 	const labels = target === "both" ? ["p1", "p2"] : [target];
 	for (let i = 0; i < xids.length; i++) {
-		log(`key ${labels[i]} x11=${xids[i]} ${keyName}`);
+		if (!quiet) log(`key ${labels[i]} x11=${xids[i]} ${keyName}`);
 		sendKey(xids[i], keyName);
 	}
 }
 
-async function pressA(target, times = 1, intervalMs = 0) {
+async function doPressA(target, times = 1, intervalMs = 0) {
 	const session = needSession();
+	log(`pressA ${target} x${times} (${session.aKey})`);
 	for (let i = 0; i < times; i++) {
-		await key(target, session.aKey);
-		await sleep(80);
-		if (intervalMs > 0 && i + 1 < times) await sleep(intervalMs);
+		doKey(target, session.aKey, true);
+		await delay(80);
+		if (intervalMs > 0 && i + 1 < times) await delay(intervalMs);
 	}
 }
 
-async function dpad(target, dir, times = 1) {
+async function doDpad(target, dir, times = 1) {
 	if (!DPAD_DIRS.has(dir)) {
 		die(`bad dpad direction ${dir} (want Left|Right|Up|Down)`);
 	}
+	if (times <= 0) return;
+	log(`dpad ${target} ${dir} x${times}`);
 	for (let i = 0; i < times; i++) {
-		await key(target, dir);
-		await sleep(120);
+		doKey(target, dir, true);
+		await delay(120);
 	}
 }
 
-const flows = {
-	async nintendoWfc(opts) {
-		const session = needSession();
-		const o = { ...readEnv(), ...opts };
-		if (!DPAD_DIRS.has(o.dpadToWfc)) {
-			die(
-				`MKWII_DPAD_TO_WFC must be Left, Right, Up, or Down (got: ${o.dpadToWfc})`,
-			);
-		}
+export function createSession(opts = {}) {
+	enqueue(() => doCreateSession(opts));
+}
 
-		if (o.bootWait > 0) {
-			log(`waiting ${o.bootWait}s before automation (MKWII_BOOT_WAIT)...`);
-			await sleep(o.bootWait * 1000);
-		}
+export function key(target, keyName) {
+	enqueue(() => doKey(target, keyName));
+}
 
-		log(
-			`menu navigate both: ${o.skipA} skip-A (${session.aKey}) @ ${o.aInterval}s`,
-		);
-		await pressA("both", o.skipA, o.aInterval * 1000);
+export function pressA(target, times = 1, intervalMs = 0) {
+	enqueue(() => doPressA(target, times, intervalMs));
+}
 
-		log(`license A (${session.aKey})`);
-		await pressA("both");
-		await sleep(2500);
+export function dpad(target, dir, times = 1) {
+	enqueue(() => doDpad(target, dir, times));
+}
 
-		log(
-			`D-pad Down x${o.dpadDownCount}, then ${o.dpadToWfc} x${o.dpadToWfcCount} -> Nintendo WFC`,
-		);
-		await dpad("both", "Down", o.dpadDownCount);
-		await dpad("both", o.dpadToWfc, o.dpadToWfcCount);
-		await sleep(300);
-		await pressA("both");
-		await sleep(800);
-		log(
-			`Nintendo WFC open attempted on both windows (P1=${session.p1.cinnamonId} P2=${session.p2.cinnamonId})`,
-		);
-	},
-};
+export function sleep(ms) {
+	enqueue(() => delay(ms));
+}
+
+export function step(fn) {
+	enqueue(fn);
+}
+
+export async function run() {
+	while (queue.length > 0) {
+		const stepFn = queue.shift();
+		await stepFn();
+	}
+}
+
+export { readEnv, waitForWindows, DPAD_DIRS, USER_ROOT };
+
+export function getP1() {
+	return activeSession?.p1;
+}
+
+export function getP2() {
+	return activeSession?.p2;
+}
+
+export function getAKey() {
+	return activeSession?.aKey;
+}
 
 function usage() {
 	console.log("Usage: node scripts/automate.js");
-	console.log("  Drive Nintendo WFC menus on two open Mario Kart Wii windows.");
+	console.log("  Wait for two open Mario Kart Wii windows and create a session.");
+	console.log("  WFC menu flow: just test / node scripts/test.js");
 	console.log("  Env:");
 	console.log("    MKWII_DOLPHIN_DIR       user dirs root (default: tmp/dolphin-test)");
 	console.log("    MKWII_WINDOW_WAIT       seconds to wait for windows (default: 0)");
-	console.log("    MKWII_BOOT_WAIT         seconds before automation (default: 0)");
-	console.log("    MKWII_SKIP_AS           A key presses (default: 18)");
-	console.log("    MKWII_A_INTERVAL        seconds between skip-A (default: 0.7)");
 	console.log("    MKWII_A_KEY             Wiimote A key (default: x)");
-	console.log("    MKWII_DPAD_DOWN_COUNT   D-pad Down before WFC row (default: 2)");
-	console.log("    MKWII_DPAD_TO_WFC       horizontal D-pad (default: Left)");
-	console.log("    MKWII_DPAD_TO_WFC_COUNT horizontal taps (default: 2)");
+	console.log("    MKWII_BOOT_WAIT         seconds before first input (default: 45)");
+	console.log("    MKWII_PHASE_WAIT        seconds between menu phases (default: 5)");
 	process.exit(0);
 }
 
@@ -326,32 +338,15 @@ async function main() {
 	if (arg === "-h" || arg === "--help") usage();
 	if (arg) die(`unknown argument: ${arg} (try: node scripts/automate.js --help)`);
 
-	await createSession();
-	await flows.nintendoWfc(readEnv());
+	createSession();
+	await run();
 }
 
-module.exports = {
-	createSession,
-	key,
-	pressA,
-	dpad,
-	sleep,
-	flows,
-	readEnv,
-	waitForWindows,
-	DPAD_DIRS,
-	get p1() {
-		return activeSession?.p1;
-	},
-	get p2() {
-		return activeSession?.p2;
-	},
-	get aKey() {
-		return activeSession?.aKey;
-	},
-};
+const isMain =
+	Boolean(process.argv[1]) &&
+	fileURLToPath(import.meta.url) === resolve(process.argv[1]);
 
-if (require.main === module) {
+if (isMain) {
 	main().catch((err) => {
 		console.error(`error: ${err.message || String(err)}`);
 		process.exit(1);

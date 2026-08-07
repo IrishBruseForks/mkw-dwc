@@ -33,8 +33,6 @@ type connSession struct {
 func (s *Server) handleConn(conn net.Conn) {
 	defer conn.Close()
 
-	logging.For("gpsp").Debugf("connection from=%s", conn.RemoteAddr())
-
 	sess := &connSession{
 		server: s,
 		conn:   conn,
@@ -79,15 +77,14 @@ func buildOtherslistReply(opids string, db database.Store) []byte {
 		for _, pidStr := range strings.Split(opids, "|") {
 			pairs = append(pairs, gamespy.KV{Key: "o", Value: pidStr})
 
+			// Match dwc_network_server_emulator: missing profiles (including
+			// sentinel opid 0) get an empty uniquenick with no error log.
 			uniquenick := ""
 			pid, err := strconv.ParseInt(pidStr, 10, 64)
 			if err != nil {
 				logging.For("gpsp").Warnf("otherslist bad opid %q: %v", pidStr, err)
-			} else {
-				profile, err := db.GetProfile(pid)
-				if err != nil {
-					logging.For("gpsp").Debugf("otherslist profile %d: %v", pid, err)
-				} else if profile != nil {
+			} else if pid != 0 {
+				if profile, err := db.GetProfile(pid); err == nil && profile != nil {
 					uniquenick = profile.Uniquenick
 				}
 			}

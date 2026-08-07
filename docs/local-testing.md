@@ -151,49 +151,55 @@ Restart Dolphin fully after changing cheats settings.
 ## 5. Connect
 
 With the server already running (`just run`), launch two muted Dolphin clients
-(NoSSL + cheats seeded, settings UI hidden):
+and run menu automation in one step:
+
+```shell
+just test "/home/econn/data/Emulation/roms/wii/Mario Kart Wii.iso"
+# or leave windows unmoved:
+just test2 "/home/econn/data/Emulation/roms/wii/Mario Kart Wii.iso"
+# or: MKWII_ISO=/path/to/MKWii.iso just test
+```
+
+Or launch only, then automate separately:
 
 ```shell
 just launch "/home/econn/data/Emulation/roms/wii/Mario Kart Wii.iso"
 # or: MKWII_ISO=/path/to/MKWii.iso just launch
 ```
 
-That opens two tiled windows only (no input automation). Then run menu automation
-on the open pair:
-
-```shell
-just auto
-# or: node scripts/automate.js
-```
-
-Automation uses keyboard only: Wiimote A=`x`, D-pad arrows (no focus switch,
-`BackgroundInput` in seeded Dolphin). Import the API from `scripts/automate.js`
-to build custom flows:
+That opens two Dolphin windows only (no input automation). Menu automation is
+`just test` (tile on primary + WFC flow) or `just test2` (same flow, no window
+move). Low-level keyboard helpers live in `scripts/automate.js`:
 
 ```javascript
-const { createSession, pressA, dpad, sleep } = require("./scripts/automate");
+import { createSession, pressA, dpad, sleep, run } from "./scripts/automate.js";
 
-await createSession();
-await pressA("both", 18, 700);
-await sleep(2500);
-await dpad("both", "Down", 2);
-await dpad("both", "Left", 2);
-await pressA("both");
+createSession();
+sleep(45000); // wait for logos/title
+pressA("both", 1);
+sleep(5000);
+pressA("both", 1);
+sleep(5000);
+dpad("both", "Down", 1);
+pressA("both", 1);
+await run();
 ```
 
-Tune default `just auto` flow with env:
+`just test` tiles both windows on the **primary** monitor, then runs the WFC flow.
+`just test2` is the same flow but does **not** move/tile windows.
+
+Defaults wait 45s for boot, then 5s between each menu phase. Tune with:
 
 ```shell
-MKWII_SKIP_AS=24 just auto          # more skip presses if still in logos
-MKWII_A_INTERVAL=0.5 just auto      # faster skip presses
-MKWII_BOOT_WAIT=5 just auto           # optional delay before first key
-MKWII_DPAD_DOWN_COUNT=2 just auto     # Down taps to reach WFC row (default: 2)
-MKWII_DPAD_TO_WFC=Left just auto      # horizontal D-pad after Down
-MKWII_DPAD_TO_WFC_COUNT=3 just auto   # horizontal D-pad taps
+MKWII_BOOT_WAIT=60 just test2 /path/to/MKWii.iso
+MKWII_PHASE_WAIT=8 just test2 /path/to/MKWii.iso
+MKWII_DPAD_DOWN_COUNT=1 just test2 /path/to/MKWii.iso
 ```
 
-`just launch` seeds NoSSL, EnableCheats, Wiimote (mouse + keyboard OR), and your
-Flatpak GCPad with keyboard OR into `tmp/dolphin-test/`.
+`just launch` / `just test` seeds NoSSL, EnableCheats, and controllers into
+`tmp/dolphin-test/`. P1 keeps your Flatpak Xbox/GCPad mapping and ORs keyboard
+binds as `(`XInput2/0/Virtual core pointer:Key`)` so both pad and automation
+work. P2 uses keyboard-only so it does not steal the same SDL pad.
 Ctrl+C on the launch terminal stops both Dolphin instances. Watch the `mkw-dwc`
 terminal for NAS, profile, and gpsp traffic.
 

@@ -51,6 +51,12 @@ func TestBuildOtherslistReply(t *testing.T) {
 		t.Fatalf("empty opids reply: got %q", empty)
 	}
 
+	zero := string(buildOtherslistReply("0", db))
+	wantZero := `\otherslist\\o\0\uniquenick\\oldone\\final\`
+	if zero != wantZero {
+		t.Fatalf("opid 0 reply:\ngot  %q\nwant %q", zero, wantZero)
+	}
+
 	if !strings.HasSuffix(got, `\final\`) {
 		t.Fatalf("reply does not end with \\final\\: %q", got)
 	}

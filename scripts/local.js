@@ -1,9 +1,7 @@
 #!/usr/bin/env node
 // Local Dolphin + mkw-dwc helpers. Usage: scripts/local.js <command> [args]
-"use strict";
-
-const { spawnSync } = require("node:child_process");
-const {
+import { spawnSync } from "node:child_process";
+import {
 	accessSync,
 	appendFileSync,
 	constants,
@@ -12,9 +10,11 @@ const {
 	mkdirSync,
 	readFileSync,
 	writeFileSync,
-} = require("node:fs");
-const { dirname, join } = require("node:path");
+} from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
+const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, "..");
 const BIN = join(REPO_ROOT, "mkw-dwc");
 const CONFIG = join(REPO_ROOT, "mkw-dwc.ini");
@@ -125,7 +125,7 @@ function cmdGrantBind() {
 	}
 	if (!isRoot()) {
 		log(`needs root once to set capabilities on ${BIN}`);
-		run("sudo", ["-E", process.execPath, __filename, "grant-bind"]);
+		run("sudo", ["-E", process.execPath, fileURLToPath(import.meta.url), "grant-bind"]);
 		return;
 	}
 	run("setcap", ["cap_net_bind_service=+ep", BIN]);

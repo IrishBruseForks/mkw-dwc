@@ -42,18 +42,24 @@ func Serve(ctx context.Context, addr, logComponent string, handle func(net.Conn)
 }
 
 // ReadLoop reads from conn until EOF or error, calling onChunk for each read.
+// Normal disconnects (EOF, closed conn after logout) are silent, matching
+// dwc_network_server_emulator connectionLost behavior.
 func ReadLoop(conn net.Conn, logComponent string, onChunk func([]byte)) {
 	buf := make([]byte, 4096)
 	for {
 		n, err := conn.Read(buf)
 		if err != nil {
-			if !errors.Is(err, io.EOF) {
-				logging.For(logComponent).Errorf("read %s: %v", conn.RemoteAddr(), err)
+			if !isNormalDisconnect(err) {
+				logging.For(logComponent).Warnf("read %s: %v", conn.RemoteAddr(), err)
 			}
 			return
 		}
 		onChunk(buf[:n])
 	}
+}
+
+func isNormalDisconnect(err error) bool {
+	return errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed)
 }
 
 // FrameBuffer accumulates incomplete GameSpy text frames across TCP reads.

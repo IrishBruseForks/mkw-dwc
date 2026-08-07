@@ -117,7 +117,7 @@ func (s *Server) handleConn(conn net.Conn) {
 	for {
 		n, err := conn.Read(buf)
 		if err != nil {
-			if !errors.Is(err, io.EOF) {
+			if !errors.Is(err, io.EOF) && !errors.Is(err, net.ErrClosed) {
 				logging.For("browser").Warnf("read %s: %v", conn.RemoteAddr(), err)
 			}
 			return

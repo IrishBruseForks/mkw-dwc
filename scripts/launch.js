@@ -1,18 +1,19 @@
 #!/usr/bin/env node
-// Launch two Flatpak Dolphin MKWii instances, seed configs, tile windows.
-"use strict";
-
-const { spawn, spawnSync } = require("node:child_process");
-const {
+// Launch two Flatpak Dolphin MKWii instances and seed configs.
+// Set MKWII_TILE=1 to tile both windows on the primary monitor.
+import { spawn, spawnSync } from "node:child_process";
+import {
 	copyFileSync,
 	existsSync,
 	mkdirSync,
 	readFileSync,
 	realpathSync,
 	writeFileSync,
-} = require("node:fs");
-const { dirname, join } = require("node:path");
+} from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
+const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, "..");
 const FLATPAK_APP = "org.DolphinEmu.dolphin-emu";
 const USER_ROOT =
@@ -259,13 +260,12 @@ function orSectionBinds(iniPath, section, binds, formatLine) {
 		}
 		seen.add(key);
 		const kb = binds[key];
-		const parts = val.split("|").map((p) => p.trim());
-		if (parts.includes(kb) || parts.some((p) => p.includes(kb))) {
+		const formatted = formatLine(key, kb, val);
+		// Already has this keyboard/emulated bind (match formatted token, not bare "X").
+		if (val && formatted === `${key} = ${val}`) {
 			out.push(line);
-		} else if (!val) {
-			out.push(formatLine(key, kb, val));
 		} else {
-			out.push(`${key} = ${kb} | ${val}`);
+			out.push(formatted);
 		}
 	}
 	if (inSection) {
@@ -285,9 +285,14 @@ function orWiimoteKeyboard(iniPath) {
 		"IR/Left": "J",
 		"IR/Right": "L",
 	};
-	orSectionBinds(iniPath, "[Wiimote1]", binds, (k, v, val) =>
-		val ? `${k} = ${v} | ${val}` : `${k} = ${v}`,
-	);
+	orSectionBinds(iniPath, "[Wiimote1]", binds, (k, v, val) => {
+		const parts = val
+			? val.split("|").map((p) => p.trim()).filter(Boolean)
+			: [];
+		if (parts.includes(v)) return `${k} = ${val}`;
+		if (!val) return `${k} = ${v}`;
+		return `${k} = ${v} | ${val}`;
+	});
 }
 
 function orGcpadKeyboard(iniPath) {
@@ -317,9 +322,12 @@ function orGcpadKeyboard(iniPath) {
 		"D-Pad/Right": "Right",
 	};
 	orSectionBinds(iniPath, "[GCPad1]", binds, (k, v, val) => {
+		// Device-qualified so keyboard works while Device is an SDL Xbox pad.
 		const extra = `(\`${kb}:${v}\`)`;
 		if (!val) return `${k} = ${extra}`;
-		if (val.includes(`\`${kb}:${v}\``)) return `${k} = ${val}`;
+		if (val.includes(extra) || val.includes(`\`${kb}:${v}\``)) {
+			return `${k} = ${val}`;
+		}
 		return `${k} = ${val} | ${extra}`;
 	});
 }
@@ -345,28 +353,31 @@ function ensureDolphinIniFlags(iniPath) {
 	writeFileSync(iniPath, text);
 }
 
-function seedControllers(dir) {
+function seedControllers(dir, role = "p1") {
 	const configDir = join(dir, "Config");
 	mkdirSync(configDir, { recursive: true });
 	const src = controllerConfigSrc();
-	let path = controllerIniPath(src, "GCPadNew.ini");
-	if (path) {
-		copyFileSync(path, join(configDir, "GCPadNew.ini"));
-		orGcpadKeyboard(join(configDir, "GCPadNew.ini"));
+	const gcpadDest = join(configDir, "GCPadNew.ini");
+	const gcpadSrc = controllerIniPath(src, "GCPadNew.ini");
+	// Only P1 keeps the physical Xbox/SDL pad. P2 would steal the same SDL/0 device.
+	if (role === "p1" && gcpadSrc) {
+		copyFileSync(gcpadSrc, gcpadDest);
+		orGcpadKeyboard(gcpadDest);
 	} else {
-		writeFileSync(join(configDir, "GCPadNew.ini"), GCPAD_KEYBOARD_TEMPLATE);
+		writeFileSync(gcpadDest, GCPAD_KEYBOARD_TEMPLATE);
 	}
-	path = controllerIniPath(src, "WiimoteNew.ini");
-	if (path) {
-		copyFileSync(path, join(configDir, "WiimoteNew.ini"));
-		orWiimoteKeyboard(join(configDir, "WiimoteNew.ini"));
+	const wiimoteDest = join(configDir, "WiimoteNew.ini");
+	const wiimoteSrc = controllerIniPath(src, "WiimoteNew.ini");
+	if (wiimoteSrc) {
+		copyFileSync(wiimoteSrc, wiimoteDest);
+		orWiimoteKeyboard(wiimoteDest);
 	} else {
-		writeFileSync(join(configDir, "WiimoteNew.ini"), WIIMOTE_TEMPLATE);
+		writeFileSync(wiimoteDest, WIIMOTE_TEMPLATE);
 	}
 	ensureDolphinIniFlags(join(configDir, "Dolphin.ini"));
 }
 
-function seedUser(dir, mac, volume, videoBackend) {
+function seedUser(dir, mac, volume, videoBackend, role = "p1") {
 	mkdirSync(join(dir, "Config"), { recursive: true });
 	mkdirSync(join(dir, "GameSettings"), { recursive: true });
 	writeFileSync(
@@ -394,7 +405,7 @@ function seedUser(dir, mac, volume, videoBackend) {
 			"",
 		].join("\n"),
 	);
-	seedControllers(dir);
+	seedControllers(dir, role);
 	for (const id of GAME_IDS) {
 		writeNossl(join(dir, "GameSettings", `${id}.ini`));
 	}
@@ -456,15 +467,26 @@ async function waitTwoWindows(timeoutS = 60) {
 	die("expected 2 Mario Kart Wii windows");
 }
 
-function leftMonitorGeom() {
+function targetMonitorGeom() {
 	if (windowBackend === "cinnamon") {
 		const m = cinnamonEval(`
-let m = Main.layoutManager.monitors.slice().sort((a, b) => a.x - b.x)[0];
+let m = Main.layoutManager.primaryMonitor;
 JSON.stringify({x: m.x, y: m.y, w: m.width, h: m.height});
 `);
 		return { ox: m.x, oy: m.y, sw: m.w, sh: m.h };
 	}
 	const r = capture("xrandr", ["--current"]);
+	const primary = r.stdout.match(
+		/ connected primary (\d+)x(\d+)\+(\d+)\+(\d+)/,
+	);
+	if (primary) {
+		return {
+			ox: Number(primary[3]),
+			oy: Number(primary[4]),
+			sw: Number(primary[1]),
+			sh: Number(primary[2]),
+		};
+	}
 	const re = /(\d+)x(\d+)\+(\d+)\+(\d+)/g;
 	let best = null;
 	let m;
@@ -542,7 +564,7 @@ else {
 }
 
 async function placeWindows(wid1, wid2) {
-	let { ox, oy, sw, sh } = leftMonitorGeom();
+	let { ox, oy, sw, sh } = targetMonitorGeom();
 	const gap = 0;
 	const margin = 0;
 	let w = Math.floor((sw - gap - 2 * margin) / 2);
@@ -577,7 +599,7 @@ async function placeWindows(wid1, wid2) {
 	const a = windowGeom(wid1);
 	const b = windowGeom(wid2);
 	log(
-		`left monitor ${sw}x${sh}+${ox}+${oy}: P1 ${a.w}x${a.h}@${a.x},${a.y} P2 ${b.w}x${b.h}@${b.x},${b.y}`,
+		`primary monitor ${sw}x${sh}+${ox}+${oy}: P1 ${a.w}x${a.h}@${a.x},${a.y} P2 ${b.w}x${b.h}@${b.x},${b.y}`,
 	);
 }
 
@@ -587,6 +609,7 @@ function usage() {
 	console.log("  Env:");
 	console.log("    MKWII_DOLPHIN_DIR  user dirs root (default: tmp/dolphin-test)");
 	console.log("    MKWII_VIDEO        Vulkan|OGL (default: Vulkan)");
+	console.log("    MKWII_TILE=1       tile both windows on the primary monitor");
 	process.exit(1);
 }
 
@@ -633,6 +656,19 @@ function launchDolphin(iso, user, label, mac, videoBackend) {
 	return child;
 }
 
+function killDolphinTree(child, signal = "SIGTERM") {
+	if (!child?.pid) return;
+	try {
+		process.kill(-child.pid, signal);
+	} catch {
+		try {
+			process.kill(child.pid, signal);
+		} catch {
+			/* already gone */
+		}
+	}
+}
+
 async function main() {
 	const arg = process.argv[2];
 	if (arg === "-h" || arg === "--help") usage();
@@ -642,31 +678,39 @@ async function main() {
 	if (!existsSync(iso)) die(`ISO not found: ${iso}`);
 
 	const videoBackend = process.env.MKWII_VIDEO || "Vulkan";
+	const tile =
+		process.env.MKWII_TILE === "1" || process.env.MKWII_TILE === "true";
 	requireFlatpak();
-	initTilingBackends();
+	if (tile) initTilingBackends();
 
 	const isoPath = realpathSync(iso);
 	const u1 = join(USER_ROOT, "p1");
 	const u2 = join(USER_ROOT, "p2");
 
-	seedUser(u1, "00:17:ab:ca:ac:f1", "0", videoBackend);
-	seedUser(u2, "00:17:ab:ca:ac:f2", "0", videoBackend);
+	seedUser(u1, "00:17:ab:ca:ac:f1", "0", videoBackend, "p1");
+	seedUser(u2, "00:17:ab:ca:ac:f2", "0", videoBackend, "p2");
 
 	const children = [];
-	const cleanup = () => {
+	let shuttingDown = false;
+
+	const cleanup = (signal = "SIGTERM") => {
 		for (const c of children) {
-			try {
-				process.kill(c.pid);
-			} catch {
-				/* ignore */
-			}
+			killDolphinTree(c, signal);
 		}
 	};
-	process.on("SIGINT", () => {
-		cleanup();
-		process.exit(0);
-	});
-	process.on("SIGTERM", cleanup);
+
+	const shutdown = () => {
+		if (shuttingDown) return;
+		shuttingDown = true;
+		cleanup("SIGTERM");
+		setTimeout(() => {
+			cleanup("SIGKILL");
+			process.exit(0);
+		}, 400).unref();
+	};
+
+	process.on("SIGINT", shutdown);
+	process.on("SIGTERM", shutdown);
 
 	log(`ISO: ${isoPath}`);
 	log(`users: ${u1} , ${u2}`);
@@ -678,22 +722,27 @@ async function main() {
 		launchDolphin(isoPath, u2, "P2", "00:17:ab:ca:ac:f2", videoBackend),
 	);
 
-	log("waiting for game windows...");
-	const wids = await waitTwoWindows(90);
-	await placeWindows(wids[0], wids[1]);
-	setTimeout(() => placeWindows(wids[0], wids[1]), 2000);
+	if (tile) {
+		log("waiting for game windows to tile on primary monitor...");
+		const wids = await waitTwoWindows(90);
+		await placeWindows(wids[0], wids[1]);
+		setTimeout(() => placeWindows(wids[0], wids[1]), 2000);
+		log("tiled on primary monitor (side by side, muted). Ctrl+C stops both.");
+	} else {
+		log("Dolphin clients started (muted, no window move). Ctrl+C stops both.");
+	}
 
-	log("floating windows ready (left monitor, side by side, muted)");
-	log("Ctrl+C stops both. Run: just auto");
-
-	while (children.some((c) => {
-		try {
-			process.kill(c.pid, 0);
-			return true;
-		} catch {
-			return false;
-		}
-	})) {
+	while (
+		!shuttingDown &&
+		children.some((c) => {
+			try {
+				process.kill(c.pid, 0);
+				return true;
+			} catch {
+				return false;
+			}
+		})
+	) {
 		await sleep(1000);
 	}
 }
