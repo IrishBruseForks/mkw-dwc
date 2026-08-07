@@ -143,36 +143,6 @@ func (c *Config) LoggingSettings() (logging.Settings, error) {
 		}
 	}
 
-	if s.Nas, err = parseLoggingBool(sec, "Nas", true); err != nil {
-		return logging.Settings{}, err
-	}
-	if s.Profile, err = parseLoggingBool(sec, "Profile", true); err != nil {
-		return logging.Settings{}, err
-	}
-	if s.Gpsp, err = parseLoggingBool(sec, "Gpsp", true); err != nil {
-		return logging.Settings{}, err
-	}
-	if s.Qr, err = parseLoggingBool(sec, "Qr", true); err != nil {
-		return logging.Settings{}, err
-	}
-	if s.Browser, err = parseLoggingBool(sec, "Browser", true); err != nil {
-		return logging.Settings{}, err
-	}
-	if s.Natneg, err = parseLoggingBool(sec, "Natneg", true); err != nil {
-		return logging.Settings{}, err
-	}
-	if s.Proxy, err = parseLoggingBool(sec, "Proxy", true); err != nil {
-		return logging.Settings{}, err
-	}
-	if s.App, err = parseLoggingBool(sec, "App", true); err != nil {
-		return logging.Settings{}, err
-	}
-	if s.Store, err = parseLoggingBool(sec, "Store", true); err != nil {
-		return logging.Settings{}, err
-	}
-	if s.Backend, err = parseLoggingBool(sec, "Backend", true); err != nil {
-		return logging.Settings{}, err
-	}
 	if v, ok := sec["SlowThreshold"]; ok && v != "" {
 		d, err := time.ParseDuration(strings.TrimSpace(v))
 		if err != nil {
@@ -185,6 +155,38 @@ func (c *Config) LoggingSettings() (logging.Settings, error) {
 	}
 	if v, ok := sec["LogFile"]; ok {
 		s.LogFile = strings.TrimSpace(v)
+	}
+
+	compSec := c.sections["LoggingComponents"]
+	if s.Nas, err = parseLoggingBool(compSec, "LoggingComponents", "Nas", true); err != nil {
+		return logging.Settings{}, err
+	}
+	if s.Profile, err = parseLoggingBool(compSec, "LoggingComponents", "Profile", true); err != nil {
+		return logging.Settings{}, err
+	}
+	if s.Gpsp, err = parseLoggingBool(compSec, "LoggingComponents", "Gpsp", true); err != nil {
+		return logging.Settings{}, err
+	}
+	if s.Qr, err = parseLoggingBool(compSec, "LoggingComponents", "Qr", true); err != nil {
+		return logging.Settings{}, err
+	}
+	if s.Browser, err = parseLoggingBool(compSec, "LoggingComponents", "Browser", true); err != nil {
+		return logging.Settings{}, err
+	}
+	if s.Natneg, err = parseLoggingBool(compSec, "LoggingComponents", "Natneg", true); err != nil {
+		return logging.Settings{}, err
+	}
+	if s.Proxy, err = parseLoggingBool(compSec, "LoggingComponents", "Proxy", true); err != nil {
+		return logging.Settings{}, err
+	}
+	if s.App, err = parseLoggingBool(compSec, "LoggingComponents", "App", true); err != nil {
+		return logging.Settings{}, err
+	}
+	if s.Store, err = parseLoggingBool(compSec, "LoggingComponents", "Store", true); err != nil {
+		return logging.Settings{}, err
+	}
+	if s.Backend, err = parseLoggingBool(compSec, "LoggingComponents", "Backend", true); err != nil {
+		return logging.Settings{}, err
 	}
 
 	return s, nil
@@ -234,14 +236,17 @@ func validateLogColor(color string) error {
 	}
 }
 
-func parseLoggingBool(sec map[string]string, key string, defaultVal bool) (bool, error) {
+func parseLoggingBool(sec map[string]string, section, key string, defaultVal bool) (bool, error) {
+	if sec == nil {
+		return defaultVal, nil
+	}
 	v, ok := sec[key]
 	if !ok || v == "" {
 		return defaultVal, nil
 	}
 	b, err := parseBool(v)
 	if err != nil {
-		return false, fmt.Errorf(`config: section "Logging" invalid %s %q: %w`, key, v, err)
+		return false, fmt.Errorf(`config: section %q invalid %s %q: %w`, section, key, v, err)
 	}
 	return b, nil
 }

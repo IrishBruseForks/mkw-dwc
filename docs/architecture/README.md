@@ -173,7 +173,7 @@ Loads `mkw-dwc.ini`, an INI file with one section per service:
 `BindAddr()` reads `IP` and `Port` from each section. `NasSvcHost()` is the
 hostname returned during NAS service location (default
 `dls1.nintendowifi.net`). `Store()` requires `[Store]` `Type` and `Path`
-(`"json"`). `LoggingSettings()` reads optional `[Logging]`.
+(`"json"`). `LoggingSettings()` reads optional `[Logging]` and `[LoggingComponents]`.
 
 ### `internal/logging`
 

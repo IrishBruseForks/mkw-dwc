@@ -75,13 +75,17 @@ reach it directly. Use `--proxy-bind` only if you move NAS to another port.
 
 Default `mkw-dwc.ini` listens on all interfaces. Edit ports/IPs if needed.
 `[Store]` is required. Optional `[Logging]` controls verbosity, colors, and
-per-service log toggles:
+log file paths. Per-service toggles live in `[LoggingComponents]`:
 
 ```ini
 [Logging]
 Level = info # debug | info | warn | error
 Color = auto # auto | always | never (ANSI colors when stderr is a TTY)
 Timestamps = true # prefix each line with date/time
+LogFile = # mirror stderr INFO/WARN/ERROR lines (empty to disable)
+DumpFile = # raw NAS/proxy TCP dumps (empty to disable; set a path to debug 20100/23400)
+
+[LoggingComponents]
 Nas = true # NAS HTTP server
 Profile = true # GPCM profile server
 Gpsp = true # GPSP player search
@@ -92,8 +96,6 @@ Proxy = true # reverse proxy (only if --proxy-bind is set)
 App = true # startup and lifecycle
 Store = true # JSON account store logs
 Backend = true # in-memory room/NATNEG registry logs
-LogFile = # mirror stderr INFO/WARN/ERROR lines (empty to disable)
-DumpFile = # raw NAS/proxy TCP dumps (empty to disable; set a path to debug 20100/23400)
 
 [NasServer]
 IP = 0.0.0.0 # bind address

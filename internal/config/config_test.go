@@ -150,6 +150,10 @@ Path = "data"
 Level = DEBUG
 Color = never
 Timestamps = false
+LogFile = logs/app.log
+DumpFile = logs/traffic.log
+
+[LoggingComponents]
 Nas = 0
 Profile = 1
 Qr = false
@@ -159,8 +163,6 @@ Proxy = 1
 App = 0
 Store = false
 Backend = 1
-LogFile = logs/app.log
-DumpFile = logs/traffic.log
 `
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)

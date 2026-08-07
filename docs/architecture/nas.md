@@ -75,7 +75,7 @@ still reach something on 80.
 curl -H "Host: naswii.nintendowifi.net" http://127.0.0.1/   # -> ok
 ```
 
-When `[Logging]` `Nas = true` (default), expect lines like these on first Wii
+When `[LoggingComponents]` `Nas = true` (default), expect lines like these on first Wii
 connect (timestamps and colors depend on `[Logging]`):
 
 ```
