@@ -56,10 +56,11 @@ func (s *connSession) dispatch(chunk []byte) {
 
 func (s *connSession) performOtherslist(cmd map[string]string) {
 	opids := cmd["opids"]
-	msg := buildOtherslistReply(opids, s.server.DB)
+	_, hasNum := cmd["numopids"]
+	msg := buildOtherslistReply(opids, hasNum, s.server.DB)
 
 	count := 0
-	if opids != "" {
+	if hasNum && opids != "" {
 		count = len(strings.Split(opids, "|"))
 	}
 	logging.For("gpsp").Infof("otherslist from %s opids=%d", s.conn.RemoteAddr(), count)
@@ -68,12 +69,12 @@ func (s *connSession) performOtherslist(cmd map[string]string) {
 	_, _ = s.conn.Write(msg)
 }
 
-func buildOtherslistReply(opids string, db database.Store) []byte {
+func buildOtherslistReply(opids string, hasNumopids bool, db database.Store) []byte {
 	pairs := []gamespy.KV{
 		{Key: "otherslist", Value: ""},
 	}
 
-	if opids != "" {
+	if hasNumopids && opids != "" {
 		for _, pidStr := range strings.Split(opids, "|") {
 			pairs = append(pairs, gamespy.KV{Key: "o", Value: pidStr})
 

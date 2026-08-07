@@ -40,18 +40,23 @@ func TestBuildOtherslistReply(t *testing.T) {
 		},
 	}
 
-	got := string(buildOtherslistReply("123|999|456", db))
+	got := string(buildOtherslistReply("123|999|456", true, db))
 	want := `\otherslist\\o\123\uniquenick\alice\o\999\uniquenick\\o\456\uniquenick\bob\oldone\\final\`
 	if got != want {
 		t.Fatalf("buildOtherslistReply mismatch:\ngot  %q\nwant %q", got, want)
 	}
 
-	empty := string(buildOtherslistReply("", db))
+	empty := string(buildOtherslistReply("", true, db))
 	if empty != `\otherslist\\oldone\\final\` {
 		t.Fatalf("empty opids reply: got %q", empty)
 	}
 
-	zero := string(buildOtherslistReply("0", db))
+	opidsWithoutNum := string(buildOtherslistReply("123", false, db))
+	if opidsWithoutNum != `\otherslist\\oldone\\final\` {
+		t.Fatalf("opids without numopids must be ignored:\ngot  %q\nwant %q", opidsWithoutNum, `\otherslist\\oldone\\final\`)
+	}
+
+	zero := string(buildOtherslistReply("0", true, db))
 	wantZero := `\otherslist\\o\0\uniquenick\\oldone\\final\`
 	if zero != wantZero {
 		t.Fatalf("opid 0 reply:\ngot  %q\nwant %q", zero, wantZero)
