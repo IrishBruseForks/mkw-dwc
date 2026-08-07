@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/IrishBruse/mkw-dwc/internal/gamespy"
 	"github.com/IrishBruse/mkw-dwc/internal/logging"
@@ -160,6 +161,9 @@ func (b *Backend) deleteServerLocked(gameid string, session uint32) {
 
 // FindServers returns servers matching filter with the requested field subset.
 func (b *Backend) FindServers(gameid, filter string, fields []string, maxCount int) ([]ServerResult, error) {
+	start := time.Now()
+	defer logging.LogDuration("backend", "FindServers", start)
+
 	compiled, err := CompileFilter(filter)
 	if err != nil {
 		return nil, err

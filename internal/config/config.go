@@ -7,6 +7,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/IrishBruse/mkw-dwc/internal/logging"
 )
@@ -98,19 +99,21 @@ func (c *Config) Store() (StoreSettings, error) {
 // LoggingSettings returns parsed [Logging] section values.
 func (c *Config) LoggingSettings() (logging.Settings, error) {
 	s := logging.Settings{
-		Level:      "info",
-		Color:      "auto",
-		Timestamps: true,
-		Nas:        true,
-		Profile:    true,
-		Gpsp:       true,
-		Qr:         true,
-		Browser:    true,
-		Natneg:     true,
-		Proxy:      true,
-		App:        true,
-		Store:      true,
-		Backend:    true,
+		Level:         "info",
+		Color:         "auto",
+		Timestamps:    true,
+		SlowThreshold: time.Second,
+		Rotate:        "off",
+		Nas:           true,
+		Profile:       true,
+		Gpsp:          true,
+		Qr:            true,
+		Browser:       true,
+		Natneg:        true,
+		Proxy:         true,
+		App:           true,
+		Store:         true,
+		Backend:       true,
 	}
 
 	sec, ok := c.sections["Logging"]
@@ -170,6 +173,16 @@ func (c *Config) LoggingSettings() (logging.Settings, error) {
 	if s.Backend, err = parseLoggingBool(sec, "Backend", true); err != nil {
 		return logging.Settings{}, err
 	}
+	if v, ok := sec["SlowThreshold"]; ok && v != "" {
+		d, err := time.ParseDuration(strings.TrimSpace(v))
+		if err != nil {
+			return logging.Settings{}, fmt.Errorf(`config: section "Logging" invalid SlowThreshold %q: %w`, v, err)
+		}
+		s.SlowThreshold = d
+	}
+	if v, ok := sec["Rotate"]; ok && v != "" {
+		s.Rotate = strings.ToLower(strings.TrimSpace(v))
+	}
 	if v, ok := sec["LogFile"]; ok {
 		s.LogFile = strings.TrimSpace(v)
 	}
@@ -205,10 +218,10 @@ func (c *Config) SectionBool(section, key string, defaultVal bool) (bool, error)
 
 func validateLogLevel(level string) error {
 	switch strings.ToLower(strings.TrimSpace(level)) {
-	case "debug", "info", "warn", "error", "":
+	case "trace", "debug", "info", "warn", "error", "":
 		return nil
 	default:
-		return fmt.Errorf(`config: section "Logging" invalid Level %q (want debug, info, warn, or error)`, level)
+		return fmt.Errorf(`config: section "Logging" invalid Level %q (want trace, debug, info, warn, or error)`, level)
 	}
 }
 

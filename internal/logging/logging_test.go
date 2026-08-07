@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 func resetForTest() {
@@ -125,8 +126,67 @@ func TestColorNeverHasNoANSI(t *testing.T) {
 }
 
 func TestInitInvalidLevel(t *testing.T) {
-	if err := Init(Settings{Level: "trace"}); err == nil {
+	if err := Init(Settings{Level: "verbose"}); err == nil {
 		t.Fatal("expected error for invalid level")
+	}
+}
+
+func TestTraceLevelVisibleAtTrace(t *testing.T) {
+	out := captureOutput(t, func() {
+		if err := Init(Settings{
+			Level:      "trace",
+			Color:      "never",
+			Timestamps: false,
+			Nas:        true,
+		}); err != nil {
+			t.Fatal(err)
+		}
+		For("nas").Tracef("trace line")
+		For("nas").Debugf("debug line")
+	})
+
+	if !strings.Contains(out, "trace line") {
+		t.Fatalf("trace message should appear, got %q", out)
+	}
+	if !strings.Contains(out, "debug line") {
+		t.Fatalf("debug message should appear at trace level, got %q", out)
+	}
+}
+
+func TestLoggerWithPrefix(t *testing.T) {
+	out := captureOutput(t, func() {
+		if err := Init(Settings{
+			Level:      "info",
+			Color:      "never",
+			Timestamps: false,
+			Qr:         true,
+		}); err != nil {
+			t.Fatal(err)
+		}
+		For("qr").With("[192.168.1.1:27900|12345678]").Infof("heartbeat")
+	})
+
+	if !strings.Contains(out, "[192.168.1.1:27900|12345678] heartbeat") {
+		t.Fatalf("expected prefixed message, got %q", out)
+	}
+}
+
+func TestLogDurationWarnsWhenSlow(t *testing.T) {
+	out := captureOutput(t, func() {
+		if err := Init(Settings{
+			Level:         "warn",
+			Color:         "never",
+			Timestamps:    false,
+			SlowThreshold: time.Millisecond,
+			Backend:       true,
+		}); err != nil {
+			t.Fatal(err)
+		}
+		LogDuration("backend", "FindServers", time.Now().Add(-10*time.Millisecond))
+	})
+
+	if !strings.Contains(out, "FindServers took") {
+		t.Fatalf("expected slow op warning, got %q", out)
 	}
 }
 

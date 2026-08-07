@@ -12,26 +12,29 @@ import (
 
 // Settings configures global logging behavior.
 type Settings struct {
-	Level      string // debug, info, warn, error (default info)
-	Color      string // auto, always, never (default auto)
-	Timestamps bool   // default true
-	Nas        bool   // default true
-	Profile    bool
-	Gpsp       bool
-	Qr         bool
-	Browser    bool
-	Natneg     bool
-	Proxy      bool
-	App        bool
-	Store      bool
-	Backend    bool
-	LogFile string // optional mirror of user-facing logs (empty = stderr only); truncated on Init
+	Level         string        // trace, debug, info, warn, error (default info)
+	Color         string        // auto, always, never (default auto)
+	Timestamps    bool          // default true
+	SlowThreshold time.Duration // warn when ops exceed this (0 = off)
+	Rotate        string        // off, daily (default off)
+	Nas           bool          // default true
+	Profile       bool
+	Gpsp          bool
+	Qr            bool
+	Browser       bool
+	Natneg        bool
+	Proxy         bool
+	App           bool
+	Store         bool
+	Backend       bool
+	LogFile string // optional mirror of user-facing logs (empty = stderr only)
 }
 
 type level int
 
 const (
-	levelDebug level = iota
+	levelTrace level = iota
+	levelDebug
 	levelInfo
 	levelWarn
 	levelError
@@ -40,15 +43,17 @@ const (
 // Logger writes leveled messages for a single component.
 type Logger struct {
 	component string
+	prefix    string
 	enabled   bool
 }
 
 var (
-	mu          sync.Mutex
-	globalLevel = levelInfo
-	useColor    bool
-	timestamps  = true
-	components  = map[string]bool{
+	mu            sync.Mutex
+	globalLevel   = levelInfo
+	slowThreshold time.Duration
+	useColor      bool
+	timestamps    = true
+	components    = map[string]bool{
 		"nas":     true,
 		"profile": true,
 		"gpsp":    true,
@@ -67,6 +72,7 @@ var (
 	noop = &Logger{enabled: false}
 
 	levelTag = map[level]string{
+		levelTrace: "TRACE",
 		levelDebug: "DEBUG",
 		levelInfo:  "INFO",
 		levelWarn:  "WARN",
@@ -74,6 +80,7 @@ var (
 	}
 
 	levelColor = map[level]string{
+		levelTrace: "\033[2m",
 		levelDebug: "\033[2m",
 		levelInfo:  "\033[36m",
 		levelWarn:  "\033[33m",
@@ -114,6 +121,9 @@ func Init(s Settings) error {
 				return fmt.Errorf("logging: create log dir %q: %w", dir, err)
 			}
 		}
+		if err := rotateLogFile(path, s.Rotate); err != nil {
+			return err
+		}
 		f, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
 		if err != nil {
 			return fmt.Errorf("logging: open log file %q: %w", path, err)
@@ -135,6 +145,7 @@ func Init(s Settings) error {
 	}
 
 	globalLevel = lvl
+	slowThreshold = s.SlowThreshold
 	useColor = colorOn
 	timestamps = s.Timestamps
 	components["nas"] = s.Nas
@@ -149,6 +160,31 @@ func Init(s Settings) error {
 	components["backend"] = s.Backend
 
 	return nil
+}
+
+func rotateLogFile(path, rotate string) error {
+	switch strings.ToLower(strings.TrimSpace(rotate)) {
+	case "", "off":
+		return nil
+	case "daily":
+		info, err := os.Stat(path)
+		if err != nil {
+			if os.IsNotExist(err) {
+				return nil
+			}
+			return fmt.Errorf("logging: stat log file %q: %w", path, err)
+		}
+		if info.Size() == 0 {
+			return nil
+		}
+		backup := path + "." + time.Now().Format("20060102")
+		if err := os.Rename(path, backup); err != nil {
+			return fmt.Errorf("logging: rotate log file %q: %w", path, err)
+		}
+		return nil
+	default:
+		return fmt.Errorf("logging: invalid Rotate %q (want off or daily)", rotate)
+	}
 }
 
 // SetOutputForTest redirects console log output. Pass nil to restore stderr.
@@ -180,6 +216,35 @@ func For(component string) *Logger {
 	return &Logger{component: component, enabled: true}
 }
 
+// With returns a child logger that prefixes each message.
+func (l *Logger) With(prefix string) *Logger {
+	if !l.enabled || prefix == "" {
+		return l
+	}
+	combined := l.prefix
+	if combined != "" {
+		combined += " "
+	}
+	combined += prefix
+	return &Logger{component: l.component, prefix: combined, enabled: true}
+}
+
+// LogDuration logs a warning when elapsed time exceeds the configured slow threshold.
+func LogDuration(component, op string, start time.Time) {
+	mu.Lock()
+	threshold := slowThreshold
+	mu.Unlock()
+	if threshold <= 0 {
+		return
+	}
+	elapsed := time.Since(start)
+	if elapsed < threshold {
+		return
+	}
+	For(component).Warnf("%s took %s (threshold %s)", op, elapsed.Round(time.Millisecond), threshold)
+}
+
+func (l *Logger) Tracef(format string, args ...any) { l.log(levelTrace, format, args...) }
 func (l *Logger) Debugf(format string, args ...any) { l.log(levelDebug, format, args...) }
 func (l *Logger) Infof(format string, args ...any)  { l.log(levelInfo, format, args...) }
 func (l *Logger) Warnf(format string, args ...any)  { l.log(levelWarn, format, args...) }
@@ -201,6 +266,7 @@ func (l *Logger) log(lvl level, format string, args ...any) {
 	color := useColor
 	w := out
 	fw := fileOut
+	prefix := l.prefix
 	mu.Unlock()
 
 	if lvl < minLevel {
@@ -208,14 +274,15 @@ func (l *Logger) log(lvl level, format string, args ...any) {
 	}
 
 	msg := fmt.Sprintf(format, args...)
+	if prefix != "" {
+		msg = prefix + " " + msg
+	}
 	plain := formatLine(lvl, l.component, msg, ts, false)
 	console := plain
 	if color {
 		console = formatLine(lvl, l.component, msg, ts, true)
 	}
 
-	// Writers were snapshotted under mu; write outside so file I/O does not
-	// serialize every GameSpy goroutine on the logging lock.
 	_, _ = io.WriteString(w, console)
 	if fw != nil {
 		_, _ = io.WriteString(fw, plain)
@@ -257,6 +324,8 @@ func parseLevel(s string) (level, error) {
 	switch strings.ToLower(strings.TrimSpace(s)) {
 	case "", "info":
 		return levelInfo, nil
+	case "trace":
+		return levelTrace, nil
 	case "debug":
 		return levelDebug, nil
 	case "warn":
@@ -264,7 +333,7 @@ func parseLevel(s string) (level, error) {
 	case "error":
 		return levelError, nil
 	default:
-		return 0, fmt.Errorf("logging: invalid level %q (want debug, info, warn, or error)", s)
+		return 0, fmt.Errorf("logging: invalid level %q (want trace, debug, info, warn, or error)", s)
 	}
 }
 
