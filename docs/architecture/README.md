@@ -225,7 +225,22 @@ docs/               Setup and architecture docs
 
 ### Tests
 
-Integration tests against the Python `dwc_network_server_emulator` reference:
+## Parity notes (Python reference)
+
+This Go port targets behavioral parity with `dwc_network_server_emulator/` for the Mario Kart Wii WFC path (NAS, Profile, GPSP, QR, Server Browser, NATNEG). Persistent accounts use the JSON store in `[Store] Path`; live rooms and NATNEG cookies stay in the in-memory backend (same split as the Python emulator, different persistence format).
+
+**Intentional divergences from the Python reference:**
+
+- **Profile login crypto** -- Go rejects invalid `response` hashes; Python logs and continues. Go behavior is correct for security.
+- **`RewriteDolphinLocalIP`** -- Go rewrites Dolphin `localip0=10.0.1.30` to the real UDP source IP for same-machine testing; Python has no equivalent.
+- **NATNEG / browser peer lookup** -- Go uses `MatchPublicIP` and extra fallbacks; more tolerant than Python strict string equality.
+- **Browser packet length bounds** -- Go closes connections on malformed lengths (DoS hardening).
+- **UDP send pacing** -- Go uses immediate sends for QR registration (challenge/registered) and zero delay for NATNEG; Python queues 50ms per packet.
+- **GPSP `numopids` gate** -- Go requires both `numopids` and `opids` keys, matching Python.
+
+**Out of scope:** DLS1, Storage, GameStats, Admin, and profile buddy commands (`addbuddy`, `bm`, etc.).
+
+Integration tests against the Python reference:
 
 ```shell
 go test ./tests/...
