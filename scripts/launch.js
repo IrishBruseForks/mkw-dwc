@@ -12,6 +12,10 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+	seedIdentities,
+	stashFlatpakAuthdata,
+} from "./seed-identities.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, "..");
@@ -377,7 +381,7 @@ function seedControllers(dir, role = "p1") {
 	ensureDolphinIniFlags(join(configDir, "Dolphin.ini"));
 }
 
-function seedUser(dir, mac, volume, videoBackend, role = "p1") {
+function seedUser(dir, mac, volume, videoBackend, role = "p1", userid = 2) {
 	mkdirSync(join(dir, "Config"), { recursive: true });
 	mkdirSync(join(dir, "GameSettings"), { recursive: true });
 	writeFileSync(
@@ -409,6 +413,7 @@ function seedUser(dir, mac, volume, videoBackend, role = "p1") {
 	for (const id of GAME_IDS) {
 		writeNossl(join(dir, "GameSettings", `${id}.ini`));
 	}
+	seedIdentities(dir, userid);
 }
 
 function mkwWindowsCinnamon() {
@@ -687,8 +692,9 @@ async function main() {
 	const u1 = join(USER_ROOT, "p1");
 	const u2 = join(USER_ROOT, "p2");
 
-	seedUser(u1, "00:17:ab:ca:ac:f1", "0", videoBackend, "p1");
-	seedUser(u2, "00:17:ab:ca:ac:f2", "0", videoBackend, "p2");
+	stashFlatpakAuthdata();
+	seedUser(u1, "00:17:ab:ca:ac:f1", "0", videoBackend, "p1", 2);
+	seedUser(u2, "00:17:ab:ca:ac:f2", "0", videoBackend, "p2", 3);
 
 	const children = [];
 	let shuttingDown = false;

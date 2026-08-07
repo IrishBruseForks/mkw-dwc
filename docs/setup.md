@@ -343,7 +343,10 @@ usually yields EC 84010 or 91010.
   on port 80, and run a build that strips duplicate Host headers
 - **23502** - something on port 80, but `mkw-dwc` is not running
 - **5XXXX** - no Wii internet connection, or network issue
-- **60000** - license already has a Friend Code. Use a brand new license
+- **60000** - license already has a Friend Code / profile id that does not
+  match the server. Wipe the license save (`rksys.dat`) or clear the profile
+  id. NAS `cfc` alone is not a reliable signal for this (console FC often
+  embeds a different pid than the local server profile id).
 - **84010 / 91010** - `mkw-dwc` stopped or the terminal was closed
 
 ## Running as a service (Linux)

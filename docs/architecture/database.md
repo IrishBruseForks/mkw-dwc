@@ -38,7 +38,6 @@ Under `Path` (example `data/`):
 | `sessions.json` | Active GPCM sessions (sesskey, profileid, loginticket) |
 | `nas_logins.json` | NAS authtoken -> login payload for later GPCM validation |
 | `banned.json` | Per-game IP bans checked during NAS acctcreate/login |
-| `meta.json` | Reserved `next_userid` counter for `acctcreate` |
 
 Writes use temp-file + rename. Restarting reloads the same files.
 
@@ -56,8 +55,12 @@ QR / browser / NATNEG do **not** use this store for rooms.
 - Dual local Dolphin clients that already share one NAS userid (both
   `Wii/shared2/DWC_AUTHDATA` contain the same id) must get distinct AUTHDATA
   files (`just launch` seeds userid 2 and 3) or delete those files so each
-  client runs `acctcreate` again under the reserved counter. Also wipe
-  `rksys.dat` for a fresh license (no Friend Code) so error 60000 cannot fire.
+  client runs `acctcreate` again. `acctcreate` uses `max(users.userid)+1`
+  like the Python reference (empty store starts at 2), so two fresh clients
+  before either has a profile row can collide. Also wipe `rksys.dat` for a
+  fresh license (no Friend Code) so error 60000 cannot fire. `just open` /
+  `launch` / `test` / `test2` all run this wipe+seed via
+  `scripts/seed-identities.js`.
 
 ## Related
 

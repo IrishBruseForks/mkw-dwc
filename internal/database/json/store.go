@@ -63,20 +63,15 @@ type banRecord struct {
 	IPAddr string `json:"ipaddr"`
 }
 
-type metaRecord struct {
-	NextUserID int64 `json:"next_userid"`
-}
-
 // Store is a file-backed GPCM store using JSON under a data directory.
 type Store struct {
 	dir string
 	mu  sync.Mutex
 
-	users      []userRecord
-	sessions   []sessionRecord
-	nasLogins  []nasLoginRecord
-	banned     []banRecord
-	nextUserID int64
+	users     []userRecord
+	sessions  []sessionRecord
+	nasLogins []nasLoginRecord
+	banned    []banRecord
 }
 
 // Open loads (or creates) a JSON store rooted at dir.
@@ -105,21 +100,29 @@ func (s *Store) Initialize() error {
 
 // GetNextAvailableUserid returns the next 13-digit zero-padded userid.
 //
-// Each call reserves a unique ID immediately (persisted in meta.json) so two
-// concurrent acctcreate requests cannot receive the same userid before either
-// has a users.json row.
+// Matches dwc_network_server_emulator: max(users.userid)+1, or 2 when empty
+// (0 is Dolphin's sentinel). Not persisted until a users.json row exists, so
+// concurrent acctcreate before GPCM login can collide like the reference.
 func (s *Store) GetNextAvailableUserid() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.ensureNextUserIDLocked()
-	id := s.nextUserID
-	s.nextUserID = id + 1
-	if err := s.persistFileLocked("meta.json", metaRecord{NextUserID: s.nextUserID}); err != nil {
-		// Still return the reserved id; the next load will recompute from data.
-		storeLog.Warnf("meta persist failed userid=%013d err=%v", id, err)
+	var maxUser int64
+	found := false
+	for _, u := range s.users {
+		n, err := strconv.ParseInt(u.UserID, 10, 64)
+		if err != nil {
+			continue
+		}
+		if !found || n > maxUser {
+			maxUser = n
+			found = true
+		}
 	}
-	return fmt.Sprintf("%013d", id)
+	if !found {
+		return "0000000000002"
+	}
+	return fmt.Sprintf("%013d", maxUser+1)
 }
 
 // IsBanned reports whether gamecd/ipaddr is present in the ban list.
@@ -509,10 +512,6 @@ func (s *Store) loadAll() error {
 	if err := loadJSON(filepath.Join(s.dir, "banned.json"), &s.banned); err != nil {
 		return err
 	}
-	var meta metaRecord
-	if err := loadJSON(filepath.Join(s.dir, "meta.json"), &meta); err != nil {
-		return err
-	}
 	if s.users == nil {
 		s.users = []userRecord{}
 	}
@@ -525,35 +524,7 @@ func (s *Store) loadAll() error {
 	if s.banned == nil {
 		s.banned = []banRecord{}
 	}
-	s.nextUserID = meta.NextUserID
-	s.ensureNextUserIDLocked()
 	return nil
-}
-
-func (s *Store) ensureNextUserIDLocked() {
-	// First real userid is 2: all zeroes is Dolphin's sentinel.
-	minNext := int64(2)
-	for _, u := range s.users {
-		n, err := strconv.ParseInt(u.UserID, 10, 64)
-		if err != nil {
-			continue
-		}
-		if n+1 > minNext {
-			minNext = n + 1
-		}
-	}
-	for _, login := range s.nasLogins {
-		n, err := strconv.ParseInt(login.UserID, 10, 64)
-		if err != nil {
-			continue
-		}
-		if n+1 > minNext {
-			minNext = n + 1
-		}
-	}
-	if s.nextUserID < minNext {
-		s.nextUserID = minNext
-	}
 }
 
 func (s *Store) persistAllLocked() error {
@@ -566,11 +537,7 @@ func (s *Store) persistAllLocked() error {
 	if err := s.persistFileLocked("nas_logins.json", s.nasLogins); err != nil {
 		return err
 	}
-	if err := s.persistFileLocked("banned.json", s.banned); err != nil {
-		return err
-	}
-	s.ensureNextUserIDLocked()
-	return s.persistFileLocked("meta.json", metaRecord{NextUserID: s.nextUserID})
+	return s.persistFileLocked("banned.json", s.banned)
 }
 
 func (s *Store) persistFileLocked(name string, v any) error {

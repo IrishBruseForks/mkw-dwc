@@ -208,7 +208,9 @@ func TestStoreNasLoginIdempotentRestore(t *testing.T) {
 	}
 }
 
-func TestGetNextAvailableUseridReservesUniqueIDs(t *testing.T) {
+func TestGetNextAvailableUseridMatchesReference(t *testing.T) {
+	// Match dwc_network_server_emulator: derived from max(users.userid), not a
+	// reserved counter. Two acctcreates before a users row both get 2.
 	dir := t.TempDir()
 	s, err := jsonstore.Open(dir)
 	if err != nil {
@@ -221,21 +223,21 @@ func TestGetNextAvailableUseridReservesUniqueIDs(t *testing.T) {
 
 	first := s.GetNextAvailableUserid()
 	second := s.GetNextAvailableUserid()
-	if first != "0000000000002" {
-		t.Fatalf("first userid = %q", first)
-	}
-	if second != "0000000000003" {
-		t.Fatalf("second userid = %q (want unique reservation without users row)", second)
+	if first != "0000000000002" || second != "0000000000002" {
+		t.Fatalf("empty store userids = %q, %q", first, second)
 	}
 
-	s2, err := jsonstore.Open(dir)
-	if err != nil {
-		t.Fatalf("reopen: %v", err)
+	auth := map[string]string{"userid": first, "gsbrcd": "RMCJ0", "csnum": "LU1"}
+	if err := s.StoreNasLogin(first, "token-1", auth); err != nil {
+		t.Fatalf("store nas: %v", err)
 	}
-	defer s2.Close()
-	third := s2.GetNextAvailableUserid()
-	if third != "0000000000004" {
-		t.Fatalf("third userid after reload = %q", third)
+	if _, _, _, _, err := s.LoginProfileFromAuth(auth); err != nil {
+		t.Fatalf("login: %v", err)
+	}
+
+	next := s.GetNextAvailableUserid()
+	if next != "0000000000003" {
+		t.Fatalf("after users row userid = %q", next)
 	}
 }
 

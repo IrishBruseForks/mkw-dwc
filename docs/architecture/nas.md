@@ -40,10 +40,10 @@ Typical first-connect flow:
 
 ### `/ac` actions
 
-- **`acctcreate`**: reserves and returns a new userid (`returncd=002`) unless
-  the IP is banned (`3913`). Unlike the Python reference, each call persists
-  the next userid immediately so concurrent Dolphin clients cannot receive the
-  same ID before either has a profile row.
+- **`acctcreate`**: returns a new userid (`returncd=002`) unless the IP is
+  banned (`3913`). Allocation matches the Python reference:
+  `max(users.userid)+1`, or `0000000000002` when empty (0 is Dolphin's
+  sentinel). Not reserved until a profile row exists.
 - **`login`**: stores NAS login data, returns `token` (authtoken) and
   `challenge` (`returncd=001`). One active token per userid (same as the
   reference): a later login replaces the previous token.

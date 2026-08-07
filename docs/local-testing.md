@@ -226,12 +226,12 @@ see 20100:
 ### Error 61020 and/or 60000 on dual Dolphin?
 
 - **61020**: both clients shared one NAS userid, so the second NAS login
-  replaced the first authtoken. `just launch` seeds distinct
-  `Wii/shared2/DWC_AUTHDATA` (userid 2 and 3) and moves the Flatpak default
-  AUTHDATA aside so both windows cannot pick up the same id.
-- **60000**: license still has an old Friend Code / profile id. `just launch`
-  wipes `rksys.dat` so each window creates a fresh license (no Friend Code).
-  Do not hex-edit the save, that corrupts checksums.
+  replaced the first authtoken. `just open` / `launch` / `test` / `test2`
+  seed distinct `Wii/shared2/DWC_AUTHDATA` (userid 2 and 3) and move the
+  Flatpak default AUTHDATA aside so both windows cannot pick up the same id.
+- **60000**: license still has an old Friend Code / profile id. Those same
+  just recipes wipe `rksys.dat` so each window creates a fresh license (no
+  Friend Code). Do not hex-edit the save, that corrupts checksums.
 - After fixing identities, clear `data/nas_logins.json` (or the whole `data/`
   dir) and reconnect so tokens match the new AUTHDATA files.
 
