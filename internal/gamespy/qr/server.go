@@ -21,6 +21,10 @@ import (
 	"github.com/IrishBruse/mkw-dwc/internal/logging"
 )
 
+func qrLog(addr net.UDPAddr, sessionID uint32) *logging.Logger {
+	return logging.For("qr").With(fmt.Sprintf("[%s|sess=%08x]", addr.String(), sessionID))
+}
+
 // IngameSNLookup resolves ingamesn values for QR heartbeats.
 type IngameSNLookup interface {
 	GetIngameSN(profileID int64) (string, error)
@@ -37,6 +41,7 @@ type Server struct {
 	mu       sync.Mutex
 	sessions map[uint32]*qrSession
 	writeCh  chan writeItem
+	conn     net.PacketConn
 }
 
 type qrSession struct {
@@ -81,6 +86,7 @@ func (s *Server) Serve(ctx context.Context) error {
 	}
 
 	s.writeCh = make(chan writeItem, 64)
+	s.conn = conn
 	go s.writeWorker(ctx, conn)
 
 	go func() {
@@ -155,6 +161,16 @@ func (s *Server) writeWorker(ctx context.Context, conn net.PacketConn) {
 }
 
 func (s *Server) queueWrite(data []byte, addr net.UDPAddr) {
+	s.queueWritePriority(data, addr, false)
+}
+
+func (s *Server) queueWritePriority(data []byte, addr net.UDPAddr, priority bool) {
+	if priority && s.conn != nil {
+		if _, err := s.conn.WriteTo(data, &addr); err != nil {
+			logging.For("qr").Warnf("priority write to %s: %v", addr.String(), err)
+		}
+		return
+	}
 	if s.writeCh == nil {
 		return
 	}
@@ -262,7 +278,7 @@ func (s *Server) handleChallengeResponse(sessionID uint32, recvData []byte, addr
 	packet[2] = 0x0a
 	binary.LittleEndian.PutUint32(packet[3:], sessionID)
 	logging.For("qr").Debugf("challenge ok session=%08x from=%s sending=0x0a", sessionID, addr.String())
-	s.queueWrite(packet, addr)
+	s.queueWritePriority(packet, addr, true)
 
 	if heartbeatData != nil {
 		s.updateServerList(sessionID, heartbeatData)
@@ -371,20 +387,24 @@ func (s *Server) handleHeartbeat(sessionID uint32, sessionIDRaw []byte, recvData
 	copy(packet[7:], serverChallenge)
 	packet[len(packet)-1] = 0
 	logging.For("qr").Debugf("challenge issued session=%08x from=%s opcode=0x01 len=%d", sessionID, addr.String(), len(packet))
-	s.queueWrite(packet, addr)
+	s.queueWritePriority(packet, addr, true)
 }
 
 func (s *Server) updateServerList(sessionID uint32, k map[string]string) {
+	s.mu.Lock()
+	sess, found := s.sessions[sessionID]
+	var addr net.UDPAddr
+	if found {
+		addr = sess.addr
+	}
+	s.mu.Unlock()
+
 	if state, ok := k["statechanged"]; ok && state == "2" {
 		gamename := k["gamename"]
-		if gamename == "" {
-			s.mu.Lock()
-			if sess, ok := s.sessions[sessionID]; ok {
-				gamename = sess.gamename
-			}
-			s.mu.Unlock()
+		if gamename == "" && found {
+			gamename = sess.gamename
 		}
-		logging.For("qr").Infof("room removed gamename=%s session=%08x", gamename, sessionID)
+		qrLog(addr, sessionID).Infof("room removed gamename=%s", gamename)
 		s.Backend.DeleteServer(gamename, sessionID)
 
 		s.mu.Lock()
@@ -398,28 +418,26 @@ func (s *Server) updateServerList(sessionID uint32, k map[string]string) {
 		return
 	}
 
-	s.mu.Lock()
-	sess, found := s.sessions[sessionID]
 	console := 0
 	if found {
 		console = sess.console
 	}
-	s.mu.Unlock()
 
 	_ = s.Backend.UpdateServerList(gamename, sessionID, k, console)
-	logging.For("qr").Debugf(
-		"room registered gamename=%s session=%08x dwc_pid=%s hoststate=%s mtype=%s suspend=%s rk=%s ev=%s publicip=%s publicport=%s numplayers=%s",
-		gamename,
-		sessionID,
+	qrLog(addr, sessionID).Infof(
+		"room registered dwc_pid=%s hoststate=%s rk=%s ev=%s publicip=%s publicport=%s numplayers=%s",
 		k["dwc_pid"],
 		k["dwc_hoststate"],
-		k["dwc_mtype"],
-		k["dwc_suspend"],
 		k["rk"],
 		k["ev"],
 		k["publicip"],
 		k["publicport"],
 		k["numplayers"],
+	)
+	qrLog(addr, sessionID).Debugf(
+		"room fields mtype=%s suspend=%s",
+		k["dwc_mtype"],
+		k["dwc_suspend"],
 	)
 
 	s.mu.Lock()

@@ -18,7 +18,7 @@ import (
 const (
 	nnVersion       = 0x03
 	sessionTTL      = 30 * time.Minute
-	sendDelay       = 50 * time.Millisecond
+	sendDelay       = 0
 	cleanupInterval = time.Minute
 )
 
@@ -139,12 +139,14 @@ func (s *Server) writeQueueWorker(ctx context.Context, conn *net.UDPConn) {
 		case <-ctx.Done():
 			return
 		case msg := <-s.writeCh:
-			timer := time.NewTimer(sendDelay)
-			select {
-			case <-ctx.Done():
-				timer.Stop()
-				return
-			case <-timer.C:
+			if sendDelay > 0 {
+				timer := time.NewTimer(sendDelay)
+				select {
+				case <-ctx.Done():
+					timer.Stop()
+					return
+				case <-timer.C:
+				}
 			}
 			if _, err := conn.WriteToUDP(msg.data, msg.addr); err != nil && ctx.Err() == nil {
 				logging.For("natneg").Errorf("write %s: %v", msg.addr, err)
