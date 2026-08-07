@@ -198,6 +198,56 @@ func TestShouldDropRequestedRoom(t *testing.T) {
 	}
 }
 
+func TestInvalidFilterStillReplies(t *testing.T) {
+	logging.Init(logging.Settings{Level: "error", Color: "never", Timestamps: false})
+
+	filter := "((( invalid syntax"
+	fields := "dwc_pid"
+	body := []byte{0x00, 0x01, 0x00, 0x00, 0x00, 0x00}
+	body = append(body, []byte("mariokartwii")...)
+	body = append(body, 0)
+	body = append(body, []byte("mariokartwii")...)
+	body = append(body, 0)
+	body = append(body, []byte("12345678")...)
+	body = append(body, []byte(filter)...)
+	body = append(body, 0)
+	body = append(body, []byte(fields)...)
+	body = append(body, 0)
+	body = append(body, 0, 0, 0, 0)
+
+	packet := make([]byte, 3+len(body))
+	binary.BigEndian.PutUint16(packet[0:2], uint16(len(packet)))
+	packet[2] = cmdServerList
+	copy(packet[3:], body)
+
+	client, server := net.Pipe()
+	defer client.Close()
+	defer server.Close()
+
+	readDone := make(chan []byte, 1)
+	go func() {
+		buf := make([]byte, 4096)
+		n, _ := client.Read(buf)
+		readDone <- append([]byte(nil), buf[:n]...)
+	}()
+
+	sess := &connSession{
+		conn: server,
+		server: &Server{
+			Backend: backend.New(),
+			Keys:    gamespy.SecretKeys(),
+		},
+	}
+	if !sess.dispatch(packet) {
+		t.Fatal("dispatch returned false")
+	}
+
+	enc := <-readDone
+	if len(enc) == 0 {
+		t.Fatal("expected encrypted reply for invalid filter")
+	}
+}
+
 func TestFindServerWithConsoleFallbackPrefersSessionConsole(t *testing.T) {
 	logging.Init(logging.Settings{Level: "error", Color: "never", Timestamps: false})
 

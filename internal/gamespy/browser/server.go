@@ -106,7 +106,7 @@ type connSession struct {
 
 func (s *Server) handleConn(conn net.Conn) {
 	defer conn.Close()
-	logging.For("browser").Infof("connection from %s", conn.RemoteAddr())
+	logging.For("browser").Debugf("connection from %s", conn.RemoteAddr())
 
 	sess := &connSession{
 		server: s,
@@ -246,12 +246,12 @@ func (sess *connSession) handleServerList(packet []byte) {
 	}
 
 	if (filter == "" && len(fields) == 0) || sendIP {
-		logging.For("browser").Infof("own-ip check from %s game=%q", sess.conn.RemoteAddr(), gameName)
+		logging.For("browser").Debugf("own-ip check from %s game=%q", sess.conn.RemoteAddr(), gameName)
 		sess.sendOwnIP(gameName, challenge)
 		return
 	}
 
-	logging.For("browser").Infof("server list query from %s game=%q filter=%q fields=%v max=%d", sess.conn.RemoteAddr(), queryGame, filter, fields, maxServers)
+	logging.For("browser").Debugf("server list query from %s game=%q filter=%q fields=%v max=%d", sess.conn.RemoteAddr(), queryGame, filter, fields, maxServers)
 	sess.findServer(queryGame, filter, fields, maxServers, gameName, challenge)
 }
 
@@ -272,6 +272,9 @@ func (sess *connSession) sendOwnIP(gameName, challenge string) {
 	out = append(out, portBuf...)
 
 	secret := sess.server.Keys[gameName]
+	if secret == "" {
+		logging.For("browser").Warnf("missing secret key for game %q (own-ip)", gameName)
+	}
 	enc := gamespy.EncTypeXEncrypt(secret, challenge, out)
 	_, _ = sess.conn.Write(enc)
 }
@@ -279,10 +282,10 @@ func (sess *connSession) sendOwnIP(gameName, challenge string) {
 func (sess *connSession) findServer(queryGame, filter string, fields []string, maxServers int, gameName, challenge string) {
 	results, err := sess.server.Backend.FindServers(queryGame, filter, fields, maxServers)
 	if err != nil {
-		logging.For("browser").Errorf("FindServers: %v", err)
-		return
+		logging.For("browser").Warnf("FindServers game=%q filter=%q: %v (sending empty list)", queryGame, filter, err)
+		results = nil
 	}
-	logging.For("browser").Infof("returning %d room(s) for game=%q", len(results), queryGame)
+	logging.For("browser").Debugf("returning %d room(s) for game=%q", len(results), queryGame)
 	if len(results) == 0 && filter != "" {
 		logging.For("browser").Debugf("zero rooms matched game=%q filter=%q", queryGame, filter)
 	}
@@ -426,6 +429,9 @@ func generateServerEntry(fields []string, result backend.ServerResult, console i
 
 func (sess *connSession) sendEncrypted(gameName, challenge string, data []byte) {
 	secret := sess.server.Keys[gameName]
+	if secret == "" {
+		logging.For("browser").Warnf("missing secret key for game %q", gameName)
+	}
 	enc := gamespy.EncTypeXEncrypt(secret, challenge, data)
 	if enc != nil {
 		_, _ = sess.conn.Write(enc)
@@ -443,7 +449,7 @@ func (sess *connSession) handleSendMessage(packet []byte) {
 	destPort := int(binary.BigEndian.Uint16(packet[7:9]))
 	payload := packet[9:]
 
-	logging.For("browser").Debugf("send message from %s -> %s:%d payload=%d bytes", sess.conn.RemoteAddr(), destIP.String(), destPort, len(payload))
+	logging.For("browser").Infof("join relay %s -> %s:%d payload=%d bytes", sess.conn.RemoteAddr(), destIP.String(), destPort, len(payload))
 
 	destAddr := net.UDPAddr{IP: destIP, Port: destPort}
 	sess.forwardToClient(payload, destAddr)
